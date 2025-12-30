@@ -4,7 +4,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # -------------------------------------------------
-# Page Configuration
+# Page Config
 # -------------------------------------------------
 st.set_page_config(
     page_title="Online Course Recommendation System",
@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("🎓 Online Course Recommendation System")
-st.write("Content-based course recommendation using TF-IDF")
+st.write("Content-based recommendations using course metadata")
 
 # -------------------------------------------------
 # Load Dataset
@@ -33,57 +33,38 @@ df.columns = (
     .str.replace(" ", "_")
 )
 
-# -------------------------------------------------
-# DEBUG: Show columns (helps deployment)
-# -------------------------------------------------
-st.write("📊 Dataset Columns Detected:")
+st.write("📊 Columns detected:")
 st.write(list(df.columns))
 
 # -------------------------------------------------
-# AUTO COLUMN MAPPING
+# Detect Course Title Column
 # -------------------------------------------------
-title_candidates = [
-    "course_title", "course_name", "title", "course"
-]
+title_candidates = ["course_title", "course_name", "title", "course"]
 
-description_candidates = [
-    "description", "course_description", "overview",
-    "about_course", "summary", "details"
-]
+course_title_col = next(
+    (c for c in title_candidates if c in df.columns),
+    None
+)
 
-course_title_col = None
-description_col = None
-
-for col in title_candidates:
-    if col in df.columns:
-        course_title_col = col
-        break
-
-for col in description_candidates:
-    if col in df.columns:
-        description_col = col
-        break
-
-# -------------------------------------------------
-# Validate Columns
-# -------------------------------------------------
-if course_title_col is None or description_col is None:
-    st.error("❌ Required columns not found automatically.")
-    st.write("Available columns:", list(df.columns))
+if course_title_col is None:
+    st.error("❌ No course title column found.")
     st.stop()
 
-# -------------------------------------------------
-# Rename for internal consistency
-# -------------------------------------------------
-df = df.rename(columns={
-    course_title_col: "course_title",
-    description_col: "description"
-})
+df = df.rename(columns={course_title_col: "course_title"})
 
 # -------------------------------------------------
-# Handle Missing Values
+# BUILD DESCRIPTION AUTOMATICALLY
 # -------------------------------------------------
-df["description"] = df["description"].fillna("")
+text_columns = [
+    col for col in df.columns
+    if col != "course_title" and df[col].dtype == "object"
+]
+
+if not text_columns:
+    st.error("❌ No text columns available to build descriptions.")
+    st.stop()
+
+df["description"] = df[text_columns].fillna("").agg(" ".join, axis=1)
 
 # -------------------------------------------------
 # TF-IDF Vectorization
@@ -98,40 +79,30 @@ tfidf_matrix = build_tfidf(df["description"])
 # -------------------------------------------------
 # Recommendation Function
 # -------------------------------------------------
-def recommend(course_name, top_n=5):
+def recommend(course_name, n=5):
     idx = df[df["course_title"] == course_name].index[0]
-
     similarity = cosine_similarity(
         tfidf_matrix[idx], tfidf_matrix
     ).flatten()
 
-    indices = similarity.argsort()[::-1][1:top_n + 1]
+    indices = similarity.argsort()[::-1][1:n+1]
     return df.iloc[indices]["course_title"]
 
 # -------------------------------------------------
 # UI
 # -------------------------------------------------
-st.subheader("🔍 Select a Course")
-
 selected_course = st.selectbox(
-    "Choose a course:",
+    "Select a course:",
     df["course_title"].unique()
 )
 
-num_recommendations = st.slider(
-    "Number of recommendations",
-    1, 10, 5
-)
+num_recs = st.slider("Number of recommendations", 1, 10, 5)
 
-if st.button("🚀 Recommend Courses"):
-    results = recommend(selected_course, num_recommendations)
-
+if st.button("🚀 Recommend"):
+    results = recommend(selected_course, num_recs)
     st.subheader("📌 Recommended Courses")
-    for i, course in enumerate(results, 1):
-        st.write(f"**{i}. {course}**")
+    for i, c in enumerate(results, 1):
+        st.write(f"**{i}. {c}**")
 
-# -------------------------------------------------
-# Footer
-# -------------------------------------------------
 st.markdown("---")
-st.caption("Streamlit + TF-IDF | Robust Column Mapping | No Pickle")
+st.caption("Robust Content-Based Recommendation | No Pickle | Streamlit")
