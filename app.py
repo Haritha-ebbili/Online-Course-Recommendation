@@ -88,7 +88,9 @@ selected_course = st.selectbox(
     df["course_title"].unique()
 )
 
-num_recommendations = st.slider("Number of recommendations", 1, 10, 5)
+num_recommendations = st.slider(
+    "Number of recommendations", 1, 10, 5
+)
 
 if st.button("🚀 Recommend"):
     results = recommend_courses(selected_course, num_recommendations)
