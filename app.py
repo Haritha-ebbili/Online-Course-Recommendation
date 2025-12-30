@@ -13,12 +13,12 @@ st.set_page_config(
 
 st.title("🎓 Online Course Recommendation System")
 st.write(
-    "An **advanced content-based recommendation system** built using "
-    "**TF-IDF vectorization** and **cosine similarity**, deployed with Streamlit."
+    "Deployment of the **content-based recommendation model** built using "
+    "TF-IDF vectorization and cosine similarity."
 )
 
 # --------------------------------------------------
-# Load Dataset
+# Load Dataset (Same as Notebook)
 # --------------------------------------------------
 @st.cache_data
 def load_data():
@@ -27,14 +27,16 @@ def load_data():
 df = load_data()
 
 # --------------------------------------------------
-# Dataset Preview
+# DATASET TABLE (AS REQUESTED)
 # --------------------------------------------------
 st.subheader("📊 Dataset Preview")
-st.dataframe(df.head(10), use_container_width=True)
-st.caption(f"Total Courses: {df.shape[0]} | Total Features: {df.shape[1]}")
+st.dataframe(df, use_container_width=True)
+st.caption(
+    f"Total Rows: {df.shape[0]} | Total Columns: {df.shape[1]}"
+)
 
 # --------------------------------------------------
-# Data Preprocessing (Model Building)
+# Data Preprocessing (Exact Model Building Logic)
 # --------------------------------------------------
 df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
@@ -48,55 +50,43 @@ if title_col is None:
 
 df.rename(columns={title_col: "course_title"}, inplace=True)
 
-# Combine all textual features
+# Combine all text columns (same approach used in notebook)
 text_columns = [
     col for col in df.columns
     if col != "course_title" and df[col].dtype == "object"
 ]
 
-if not text_columns:
-    st.error("No textual features available for model building.")
-    st.stop()
-
 df[text_columns] = df[text_columns].fillna("")
 df["combined_text"] = df[text_columns].agg(" ".join, axis=1)
 
 # --------------------------------------------------
-# Model Building (TF-IDF)
+# MODEL BUILDING (TF-IDF)
 # --------------------------------------------------
 @st.cache_resource
-def build_tfidf_model(text):
+def build_model(text_data):
     vectorizer = TfidfVectorizer(stop_words="english")
-    tfidf_matrix = vectorizer.fit_transform(text)
+    tfidf_matrix = vectorizer.fit_transform(text_data)
     return tfidf_matrix
 
-tfidf_matrix = build_tfidf_model(df["combined_text"])
-st.success("✅ TF-IDF model successfully built")
+tfidf_matrix = build_model(df["combined_text"])
+
+st.success("✅ Model built successfully using TF-IDF")
 
 # --------------------------------------------------
-# Recommendation Logic (with similarity scores)
+# Recommendation Function (Exact Output of Model)
 # --------------------------------------------------
-def recommend_courses(course_name, top_n=5, threshold=0.6):
+def recommend_courses(course_name, top_n=5):
     idx = df[df["course_title"] == course_name].index[0]
 
     similarity_scores = cosine_similarity(
         tfidf_matrix[idx], tfidf_matrix
     ).flatten()
 
-    scored = list(enumerate(similarity_scores))
-    scored = sorted(scored, key=lambda x: x[1], reverse=True)
-
-    results = []
-    for i, score in scored[1:]:
-        if score >= threshold:
-            results.append((df.iloc[i]["course_title"], score))
-        if len(results) == top_n:
-            break
-
-    return pd.DataFrame(results, columns=["Course Title", "Similarity Score"])
+    similar_indices = similarity_scores.argsort()[::-1][1:top_n + 1]
+    return df.iloc[similar_indices]["course_title"]
 
 # --------------------------------------------------
-# User Controls
+# User Interface (Deployment Layer)
 # --------------------------------------------------
 st.subheader("🔍 Course Recommendation")
 
@@ -112,72 +102,17 @@ num_recommendations = st.slider(
     value=5
 )
 
-similarity_threshold = st.slider(
-    "Minimum similarity threshold",
-    min_value=0.0,
-    max_value=1.0,
-    value=0.6,
-    step=0.05
-)
+if st.button("🚀 Recommend"):
+    results = recommend_courses(selected_course, num_recommendations)
+
+    st.subheader("📌 Recommended Courses")
+    for i, course in enumerate(results, 1):
+        st.write(f"{i}. {course}")
 
 # --------------------------------------------------
-# Recommendation Output
-# --------------------------------------------------
-if st.button("🚀 Recommend Courses"):
-    results = recommend_courses(
-        selected_course,
-        num_recommendations,
-        similarity_threshold
-    )
-
-    if results.empty:
-        st.warning("No courses meet the selected similarity threshold.")
-    else:
-        st.subheader("📌 Recommended Courses")
-
-        for _, row in results.iterrows():
-            st.markdown(f"**{row['Course Title']}**")
-            st.progress(float(row["Similarity Score"]))
-            st.caption(f"Similarity Score: {row['Similarity Score']:.3f}")
-
-        # --------------------------------------------------
-        # Similarity Distribution Chart
-        # --------------------------------------------------
-        st.subheader("📈 Similarity Score Distribution")
-        st.bar_chart(
-            results.set_index("Course Title")["Similarity Score"]
-        )
-
-# --------------------------------------------------
-# Final Model Summary
+# Final Model Statement
 # --------------------------------------------------
 st.markdown("---")
-st.subheader("📘 Final Deployed Model Summary")
-
-st.markdown(
-    """
-**Model Type:** Content-Based Recommendation System  
-
-**Feature Engineering:**  
-- All textual attributes combined into a unified feature space  
-
-**Vectorization:**  
-- TF-IDF (Term Frequency–Inverse Document Frequency)  
-
-**Similarity Measure:**  
-- Cosine Similarity  
-
-**Model Strengths:**  
-- No dependency on user history  
-- Explainable similarity scores  
-- Scales efficiently for large datasets  
-- Threshold-based quality control  
-
-**Deployment:**  
-- Model built dynamically within Streamlit  
-- No serialized (pickle) files  
-- Stable, reproducible, and cloud-safe  
-"""
+st.caption(
+    "Final Deployed Model: TF-IDF + Cosine Similarity (Content-Based Recommendation)"
 )
-
-st.caption("Final Deployed Model: TF-IDF + Cosine Similarity (Content-Based)")
