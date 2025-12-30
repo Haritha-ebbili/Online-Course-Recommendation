@@ -1,108 +1,117 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# -------------------------------------------------
-# Page Config
-# -------------------------------------------------
-st.set_page_config(
-    page_title="Online Course Recommendation System",
-    layout="wide"
-)
+# ------------------------------------------------------
+# Page Configuration
+# ------------------------------------------------------
+st.set_page_config(page_title="Online Course Recommendation", layout="wide")
 
 st.title("🎓 Online Course Recommendation System")
-st.write("Content-based recommendations using course metadata")
+st.write("Model building + recommendation executed inside Streamlit")
 
-# -------------------------------------------------
-# Load Dataset
-# -------------------------------------------------
+# ------------------------------------------------------
+# Load Dataset (same as notebook)
+# ------------------------------------------------------
 @st.cache_data
 def load_data():
-    return pd.read_excel("online_course_recommendation.xlsx")
+    df = pd.read_excel("online_course_recommendation.xlsx")
+    return df
 
 df = load_data()
 
-# -------------------------------------------------
-# Normalize Column Names
-# -------------------------------------------------
-df.columns = (
-    df.columns
-    .str.strip()
-    .str.lower()
-    .str.replace(" ", "_")
-)
+# ------------------------------------------------------
+# Data Preprocessing (same as EDA notebook)
+# ------------------------------------------------------
+st.subheader("📊 Dataset Preview")
+st.dataframe(df.head())
 
-st.write("📊 Columns detected:")
-st.write(list(df.columns))
+# Normalize column names
+df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
-# -------------------------------------------------
-# Detect Course Title Column
-# -------------------------------------------------
-title_candidates = ["course_title", "course_name", "title", "course"]
+# Identify course title column
+title_cols = ["course_title", "course_name", "title", "course"]
+title_col = next((c for c in title_cols if c in df.columns), None)
 
-course_title_col = next(
-    (c for c in title_candidates if c in df.columns),
-    None
-)
-
-if course_title_col is None:
-    st.error("❌ No course title column found.")
+if title_col is None:
+    st.error("No course title column found in dataset.")
     st.stop()
 
-df = df.rename(columns={course_title_col: "course_title"})
+df.rename(columns={title_col: "course_title"}, inplace=True)
 
-# -------------------------------------------------
-# BUILD DESCRIPTION AUTOMATICALLY
-# -------------------------------------------------
+# Build text feature (same logic as model building)
 text_columns = [
     col for col in df.columns
     if col != "course_title" and df[col].dtype == "object"
 ]
 
-if not text_columns:
-    st.error("❌ No text columns available to build descriptions.")
-    st.stop()
+df[text_columns] = df[text_columns].fillna("")
 
-df["description"] = df[text_columns].fillna("").agg(" ".join, axis=1)
+df["combined_text"] = df[text_columns].agg(" ".join, axis=1)
 
-# -------------------------------------------------
-# TF-IDF Vectorization
-# -------------------------------------------------
+# ------------------------------------------------------
+# Model Building (TF-IDF) – SAME AS NOTEBOOK
+# ------------------------------------------------------
+st.subheader("⚙️ Model Building")
+
 @st.cache_resource
-def build_tfidf(text):
+def train_model(text):
     tfidf = TfidfVectorizer(stop_words="english")
-    return tfidf.fit_transform(text)
+    tfidf_matrix = tfidf.fit_transform(text)
+    return tfidf, tfidf_matrix
 
-tfidf_matrix = build_tfidf(df["description"])
+tfidf, tfidf_matrix = train_model(df["combined_text"])
 
-# -------------------------------------------------
-# Recommendation Function
-# -------------------------------------------------
-def recommend(course_name, n=5):
+st.success("TF-IDF model trained successfully")
+
+# ------------------------------------------------------
+# Similarity Computation
+# ------------------------------------------------------
+@st.cache_resource
+def compute_similarity(matrix):
+    return cosine_similarity(matrix)
+
+cosine_sim = compute_similarity(tfidf_matrix)
+
+# ------------------------------------------------------
+# Recommendation Function (Notebook Logic)
+# ------------------------------------------------------
+def recommend_courses(course_name, n=5):
     idx = df[df["course_title"] == course_name].index[0]
-    similarity = cosine_similarity(
-        tfidf_matrix[idx], tfidf_matrix
-    ).flatten()
+    scores = list(enumerate(cosine_sim[idx]))
+    scores = sorted(scores, key=lambda x: x[1], reverse=True)
+    scores = scores[1:n+1]
 
-    indices = similarity.argsort()[::-1][1:n+1]
-    return df.iloc[indices]["course_title"]
+    course_indices = [i[0] for i in scores]
+    return df.iloc[course_indices]["course_title"]
 
-# -------------------------------------------------
-# UI
-# -------------------------------------------------
+# ------------------------------------------------------
+# Streamlit UI
+# ------------------------------------------------------
+st.subheader("🔍 Course Recommendation")
+
 selected_course = st.selectbox(
     "Select a course:",
     df["course_title"].unique()
 )
 
-num_recs = st.slider("Number of recommendations", 1, 10, 5)
+num_recommendations = st.slider(
+    "Number of recommendations",
+    1, 10, 5
+)
 
-if st.button("🚀 Recommend"):
-    results = recommend(selected_course, num_recs)
+if st.button("🚀 Recommend Courses"):
+    results = recommend_courses(selected_course, num_recommendations)
+
     st.subheader("📌 Recommended Courses")
-    for i, c in enumerate(results, 1):
-        st.write(f"**{i}. {c}**")
+    for i, course in enumerate(results, 1):
+        st.write(f"**{i}. {course}**")
 
+# ------------------------------------------------------
+# Footer
+# ------------------------------------------------------
 st.markdown("---")
-st.caption("Robust Content-Based Recommendation | No Pickle | Streamlit")
+st.caption("Model built & executed live using TF-IDF + Cosine Similarity (No Pickle)")
+
