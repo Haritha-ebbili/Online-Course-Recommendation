@@ -1,99 +1,94 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # ------------------------------------------------------
 # Page Configuration
 # ------------------------------------------------------
-st.set_page_config(page_title="Online Course Recommendation", layout="wide")
+st.set_page_config(
+    page_title="Online Course Recommendation System",
+    layout="wide"
+)
 
 st.title("🎓 Online Course Recommendation System")
-st.write("Model building + recommendation executed inside Streamlit")
+st.write("Model building and recommendation executed live")
 
 # ------------------------------------------------------
-# Load Dataset (same as notebook)
+# Load Dataset (cache is OK here)
 # ------------------------------------------------------
 @st.cache_data
 def load_data():
-    df = pd.read_excel("online_course_recommendation.xlsx")
-    return df
+    return pd.read_excel("online_course_recommendation.xlsx")
 
 df = load_data()
 
 # ------------------------------------------------------
-# Data Preprocessing (same as EDA notebook)
+# Normalize Column Names
 # ------------------------------------------------------
-st.subheader("📊 Dataset Preview")
-st.dataframe(df.head())
-
-# Normalize column names
 df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
-# Identify course title column
-title_cols = ["course_title", "course_name", "title", "course"]
-title_col = next((c for c in title_cols if c in df.columns), None)
+# ------------------------------------------------------
+# Detect Course Title Column
+# ------------------------------------------------------
+title_candidates = ["course_title", "course_name", "title", "course"]
+title_col = next((c for c in title_candidates if c in df.columns), None)
 
 if title_col is None:
-    st.error("No course title column found in dataset.")
+    st.error("❌ No course title column found in dataset.")
+    st.write("Available columns:", list(df.columns))
     st.stop()
 
 df.rename(columns={title_col: "course_title"}, inplace=True)
 
-# Build text feature (same logic as model building)
+# ------------------------------------------------------
+# Build Text Feature (same as notebook logic)
+# ------------------------------------------------------
 text_columns = [
     col for col in df.columns
     if col != "course_title" and df[col].dtype == "object"
 ]
 
-df[text_columns] = df[text_columns].fillna("")
+if not text_columns:
+    st.error("❌ No text columns available to build the model.")
+    st.stop()
 
+df[text_columns] = df[text_columns].fillna("")
 df["combined_text"] = df[text_columns].agg(" ".join, axis=1)
 
 # ------------------------------------------------------
-# Model Building (TF-IDF) – SAME AS NOTEBOOK
+# TF-IDF MODEL BUILDING (cache is OK)
 # ------------------------------------------------------
-st.subheader("⚙️ Model Building")
-
 @st.cache_resource
-def train_model(text):
-    tfidf = TfidfVectorizer(stop_words="english")
-    tfidf_matrix = tfidf.fit_transform(text)
-    return tfidf, tfidf_matrix
+def train_tfidf(text):
+    vectorizer = TfidfVectorizer(stop_words="english")
+    matrix = vectorizer.fit_transform(text)
+    return matrix
 
-tfidf, tfidf_matrix = train_model(df["combined_text"])
+tfidf_matrix = train_tfidf(df["combined_text"])
 
 st.success("TF-IDF model trained successfully")
 
 # ------------------------------------------------------
-# Similarity Computation
-# ------------------------------------------------------
-@st.cache_resource
-def compute_similarity(matrix):
-    return cosine_similarity(matrix)
-
-cosine_sim = compute_similarity(tfidf_matrix)
-
-# ------------------------------------------------------
-# Recommendation Function (Notebook Logic)
+# Recommendation Function (NO CACHE HERE)
 # ------------------------------------------------------
 def recommend_courses(course_name, n=5):
     idx = df[df["course_title"] == course_name].index[0]
-    scores = list(enumerate(cosine_sim[idx]))
-    scores = sorted(scores, key=lambda x: x[1], reverse=True)
-    scores = scores[1:n+1]
 
-    course_indices = [i[0] for i in scores]
-    return df.iloc[course_indices]["course_title"]
+    similarity_scores = cosine_similarity(
+        tfidf_matrix[idx], tfidf_matrix
+    ).flatten()
+
+    similar_indices = similarity_scores.argsort()[::-1][1:n+1]
+    return df.iloc[similar_indices]["course_title"]
 
 # ------------------------------------------------------
 # Streamlit UI
 # ------------------------------------------------------
-st.subheader("🔍 Course Recommendation")
+st.subheader("🔍 Select a Course")
 
 selected_course = st.selectbox(
-    "Select a course:",
+    "Choose a course:",
     df["course_title"].unique()
 )
 
@@ -113,5 +108,4 @@ if st.button("🚀 Recommend Courses"):
 # Footer
 # ------------------------------------------------------
 st.markdown("---")
-st.caption("Model built & executed live using TF-IDF + Cosine Similarity (No Pickle)")
-
+st.caption("TF-IDF + Cosine Similarity | Model Built Live | No Pickle")
