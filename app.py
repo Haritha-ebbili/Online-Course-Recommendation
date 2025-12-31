@@ -85,7 +85,7 @@ st.markdown("**BEST MODEL: Population Filtering (Popular + High-Rated + User Seg
 # Sidebar
 st.sidebar.header("🎛️ Controls")
 user_id = st.sidebar.number_input("👤 User ID", 1, 49999, 15796)
-n_recs = st.sidebar.slider("📊 # Recommendations", 5, 20, 10)
+n_recs = st.sidebar.slider("📊 # Recommendations", 1, 20, 10)
 max_price = st.sidebar.slider("💰 Max Price ($)", 0, 1000, 500)
 min_rating = st.sidebar.slider("⭐ Min Rating", 1.0, 5.0, 3.5)
 
