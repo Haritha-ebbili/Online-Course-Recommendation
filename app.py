@@ -4,7 +4,7 @@ import pickle
 import os
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Course Recommender", layout="wide")
+st.set_page_config(page_title="Dynamic Course Recommender", layout="wide")
 
 @st.cache_resource
 def load_assets():
@@ -21,86 +21,89 @@ def load_assets():
 
 full_df, train_df, biases = load_assets()
 
-# --- DYNAMIC RESET LOGIC ---
-# This ensures that when the user ID changes, the old recommendations are deleted
-def reset_results():
-    if 'main_recs' in st.session_state:
-        del st.session_state['main_recs']
-
 # --- UI ---
 st.title("🎓 Online Course Recommendation System")
 
 if full_df is not None:
-    # We call reset_results whenever the number_input is interacted with
-    user_input = st.number_input("Enter User ID:", value=15796, step=1, on_change=reset_results)
+    # 1. User ID Input with Dynamic Reset
+    # The 'key' helps Streamlit track this specific input
+    user_id = st.number_input("Enter User ID:", value=15796, step=1, key="main_user_input")
 
+    # If the user ID changes, we clear the session state to force new calculations
+    if "current_user" not in st.session_state:
+        st.session_state.current_user = user_id
+
+    if st.session_state.current_user != user_id:
+        st.session_state.current_user = user_id
+        if 'recommendations' in st.session_state:
+            del st.session_state['recommendations']
+
+    # 2. Generate Button
     if st.button("Generate Recommendations"):
-        # 1. Prediction Logic (Hybrid 50/50)
+        # Prediction Logic
         g_mean = biases['global_mean']
         u_b = biases['user_bias']
         i_b = biases['item_bias']
         
-        # Get courses not yet taken by this specific user
-        seen = train_df[train_df['userid'] == user_input]['courseid'].unique()
-        all_c = train_df['courseid'].unique()
-        candidates = [c for c in all_c if c not in seen]
+        # Identify courses already taken by this specific user
+        seen_ids = train_df[train_df['userid'] == user_id]['courseid'].unique()
+        all_unique_ids = train_df['courseid'].unique()
+        candidate_ids = [c for c in all_unique_ids if c not in seen_ids]
         
-        results = []
-        for cid in candidates:
-            # Hybrid Score calculation
-            cf_score = g_mean + u_b.get(user_input, 0) + i_b.get(cid, 0)
+        scores = []
+        for cid in candidate_ids:
+            # Hybrid Calculation
+            cf_part = g_mean + u_b.get(user_id, 0) + i_b.get(cid, 0)
             item_mean = train_df[train_df['courseid'] == cid]['rating'].mean()
-            score = 0.5 * cf_score + 0.5 * item_mean
-            results.append((cid, score))
+            final_score = 0.5 * cf_part + 0.5 * item_mean
+            scores.append((cid, final_score))
         
-        # Sort and take top 5
-        results.sort(key=lambda x: x[1], reverse=True)
-        top_5 = pd.DataFrame(results[:5], columns=['course_id', 'recommendation_score'])
+        # Sort and pick top 5
+        scores.sort(key=lambda x: x[1], reverse=True)
+        top_5_df = pd.DataFrame(scores[:5], columns=['course_id', 'recommendation_score'])
         
-        # Merge with metadata (deduplicated by ID for the table)
+        # Merge with metadata (deduplicated by ID)
         lookup = full_df[['course_id', 'course_name', 'instructor', 'rating']].drop_duplicates('course_id')
-        final_recs = top_5.merge(lookup, on='course_id', how='left')
+        final_table = top_5_df.merge(lookup, on='course_id', how='left')
         
-        # Format the score to 6 decimal places (Exact requirement for 15796)
-        final_recs['recommendation_score'] = final_recs['recommendation_score'].map('{:.6f}'.format)
+        # Format score to 6 decimal places
+        final_table['recommendation_score'] = final_table['recommendation_score'].map('{:.6f}'.format)
         
-        st.subheader(f"Top Recommendations for User {user_input}")
-        # Display table with specific columns
-        st.table(final_recs[['course_id', 'recommendation_score', 'course_name', 'instructor', 'rating']])
-        
-        # Store these specific results in session state
-        st.session_state['main_recs'] = final_recs
+        # Store in session state
+        st.session_state['recommendations'] = final_table
 
-    # --- THE "SAME COURSE, DIFFERENT VERSION" FEATURE ---
-    if 'main_recs' in st.session_state:
+    # --- DISPLAY TABLE ---
+    if 'recommendations' in st.session_state:
+        recs = st.session_state['recommendations']
+        st.subheader(f"Top Recommendations for User {user_id}")
+        st.table(recs[['course_id', 'recommendation_score', 'course_name', 'instructor', 'rating']])
+
+        # --- REFINEMENT: SAME COURSE, DIFFERENT INSTRUCTORS ---
         st.divider()
-        st.subheader("🎯 Refine Your Choice: Same Course, Different Versions")
-        st.write("Find the same course with a different instructor and rating:")
+        st.subheader("🎯 Refine: Same Course, Different Instructor")
         
-        # Use a key based on user_id so this dropdown also resets
-        selected_course_name = st.selectbox(
-            "Select a course from your recommendations:",
-            ["Select a course..."] + st.session_state['main_recs']['course_name'].tolist(),
-            key=f"select_{user_input}" 
+        # Dropdown for the courses listed above
+        selected_name = st.selectbox(
+            "Select a course to see other available instructors and ratings:",
+            ["Select..."] + recs['course_name'].tolist(),
+            key=f"dropdown_{user_id}" # Reset dropdown when User ID changes
         )
         
-        if selected_course_name != "Select a course...":
-            # Identify the version currently shown in the table
-            current_id = st.session_state['main_recs'][
-                st.session_state['main_recs']['course_name'] == selected_course_name
-            ]['course_id'].iloc[0]
-
-            # Search full_df for same name, but DIFFERENT instructor/ID
+        if selected_name != "Select...":
+            # Get the ID of the version currently in the recommendation table
+            current_id = recs[recs['course_name'] == selected_name]['course_id'].iloc[0]
+            
+            # Search the whole dataset for the same name but different ID/Instructor
             alternatives = full_df[
-                (full_df['course_name'] == selected_course_name) & 
+                (full_df['course_name'] == selected_name) & 
                 (full_df['course_id'] != current_id)
             ].sort_values(by='rating', ascending=False)
-
+            
             if not alternatives.empty:
-                st.write(f"Other available instructors for **{selected_course_name}**:")
+                st.write(f"Other versions of **{selected_name}** found in the dataset:")
                 st.table(alternatives[['course_id', 'course_name', 'instructor', 'rating', 'course_price']].reset_index(drop=True))
             else:
-                st.info(f"No other versions of **{selected_course_name}** were found.")
+                st.info("No other instructors found for this specific course name.")
 
 else:
-    st.error("Assets not found. Please ensure your .pkl files are in the directory.")
+    st.error("Assets not found. Please verify full_data.pkl, train_data.pkl, and biases.pkl exist.")
