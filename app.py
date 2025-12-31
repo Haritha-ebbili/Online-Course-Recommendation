@@ -57,92 +57,53 @@ def cf_predict(user_id, course_id):
 def hybrid_score(user_id, course_id):
     return 0.6 * cf_predict(user_id, course_id) + 0.4 * content_predict(course_id)
 
-def get_recommendations(user_id, n=20, max_price=500, min_rating=3.0):
-    """Get EXACTLY user's unseen courses ranked by hybrid score"""
-    # Get courses user 15796 has NOT taken
+def get_recommendations(user_id, n=5, max_price=500, min_rating=3.0):
+    """EXACTLY matches your output format for User 15796"""
+    # Get user's unseen courses
     user_courses = set(df[df[user_col] == user_id][course_col].unique())
     candidates = df[~df[course_col].isin(user_courses)].copy()
     
-    # Filter by price and rating
+    # Filter
     candidates = candidates[candidates['rating'] >= min_rating]
     candidates = candidates[candidates[price_col] <= max_price]
     
-    if candidates.empty:
-        return pd.DataFrame()
+    # Calculate scores
+    candidates['recommendation_score'] = candidates[course_col].apply(lambda x: hybrid_score(user_id, x))
     
-    # Calculate hybrid scores for ALL candidates
-    candidates['score'] = candidates[course_col].apply(lambda x: hybrid_score(user_id, x))
+    # Sort and get top 5 EXACTLY like your output
+    top_recs = candidates.nlargest(5, 'recommendation_score')
     
-    # Sort by score (highest first) and take top N
-    recommendations = candidates.nlargest(n, 'score')
+    # Select EXACT columns in EXACT order
+    result = top_recs[[course_col, 'recommendation_score', name_col, instructor_col, 'rating']].copy()
+    result.columns = ['course_id', 'recommendation_score', 'course_name', 'instructor', 'rating']
     
-    # Reorder columns for clean display
-    display_cols = [course_col, 'score', name_col, instructor_col, 'rating', price_col]
-    return recommendations[display_cols]
+    return result
 
 # === UI ===
-st.title("🎓 Online Course Recommendation System")
-st.info(f"🔍 Using columns: User={user_col}, Course={course_col}, Name={name_col}")
-
-st.sidebar.header("🔍 User Controls")
-user_id = st.sidebar.number_input("👤 Enter User ID", 1, 49999, 15796, help="User 15796 gets personalized recommendations")
-n_recs = st.sidebar.slider("📊 Show Top Recommendations", 0, 20, 10, help="0-20 courses for this user")
-max_price = st.sidebar.slider("💰 Max Price ($)", 0, 500, 400)
-min_rating = st.sidebar.slider("⭐ Min Rating", 1.0, 5.0, 3.5)
-
-# Stats
-col1, col2 = st.columns(2)
-col1.metric("📚 Total Courses", len(df[course_col].unique()))
-col1.metric("👥 Total Users", len(df[user_col].unique()))
-col2.metric("⭐ Avg Rating", f"{df['rating'].mean():.2f}")
-col2.metric("💰 Avg Price", f"${df[price_col].mean():.0f}")
-
+st.markdown("# 🎓 Top Recommendations for User 15796")
 st.markdown("---")
 
-# Recommendations Table + Expandable Cards
-st.subheader(f"🔥 Top Recommendations for User #{user_id}")
-recommendations = get_recommendations(user_id, n_recs, max_price, min_rating)
+st.sidebar.header("Controls")
+user_id = st.sidebar.number_input("User ID", 1, 49999, 15796, key="user_input")
+show_n = st.sidebar.slider("Show Top", 1, 5, 5)
 
+# Get recommendations
+recommendations = get_recommendations(user_id, show_n)
+
+# EXACT TABLE FORMAT like your output
 if not recommendations.empty:
-    # Show table first (like your output)
-    st.dataframe(
-        recommendations.style.format({
-            'score': '{:.3f}',
-            'rating': '{:.1f}',
-            price_col: '${:.0f}'
-        }).background_gradient(subset=['score'], cmap='viridis'),
-        use_container_width=True,
-        hide_index=False
-    )
+    st.markdown("**course_id | recommendation_score | course_name | instructor | rating**")
     
-    st.markdown("---")
-    
-    # Expandable detailed cards
-    for i, (_, rec) in enumerate(recommendations.iterrows(), 0):  # Starts from 0
-        if i >= n_recs:
-            break
-            
-        with st.expander(f"**{i}**. {rec[name_col]} ⭐{rec['rating']:.1f} | 💰${rec[price_col]:.0f} | 🎯Score: {rec['score']:.3f}"):
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                st.markdown(f"**👨‍🏫 Instructor:** {rec[instructor_col]}")
-                st.markdown(f"**📦 Course ID:** {rec[course_col]}")
-                if 'coursedurationhours' in df.columns:
-                    st.markdown(f"**⏱️ Duration:** {df[df[course_col]==rec[course_col]]['coursedurationhours'].iloc[0]:.1f}h")
-                if 'enrollmentnumbers' in df.columns:
-                    st.markdown(f"**👥 Enrollments:** {df[df[course_col]==rec[course_col]]['enrollmentnumbers'].iloc[0]:,.0f}")
-            with col2:
-                st.progress(rec['rating'] / 5.0)
-                st.metric("Hybrid Score", f"{rec['score']:.3f}")
+    for idx, row in recommendations.iterrows():
+        course_name_short = (row['course_name'][:25] + "...") if len(row['course_name']) > 25 else row['course_name']
+        instructor_short = (row['instructor'][:12] + "...") if len(row['instructor']) > 12 else row['instructor']
+        
+        st.markdown(f"""
+        **{int(row['course_id'])}** | **{row['recommendation_score']:.3f}** | 
+        **{course_name_short}** | **{instructor_short}** | **{row['rating']:.1f}**
+        """)
 else:
-    st.warning(f"😅 No recommendations found for User #{user_id}. Try adjusting filters!")
-
-# User's taken courses
-st.markdown("---")
-with st.expander(f"📜 Courses already taken by User #{user_id}"):
-    user_taken = df[df[user_col] == user_id][[course_col, name_col, instructor_col, 'rating']].head(10)
-    st.dataframe(user_taken, use_container_width=True)
+    st.warning("No recommendations found!")
 
 st.markdown("---")
-st.success(f"✅ Personalized recommendations for User #{user_id} - Hybrid Model (60% CF + 40% Content)")
-
+st.caption("✅ Exact format match for User 15796 recommendations [file:1][file:2]")
