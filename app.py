@@ -26,7 +26,7 @@ courses = (
       })
 )
 
-# ================= USER HISTORY WITH RATINGS =================
+# ================= USER–COURSE RATINGS =================
 user_course_ratings = (
     df.groupby(["user_id", "course_id"])["rating"]
       .mean()
@@ -38,16 +38,16 @@ user_course_ratings = (
 def build_tfidf(courses):
     tfidf = TfidfVectorizer(stop_words="english")
     vectors = tfidf.fit_transform(courses["course_name"].fillna(""))
-    return tfidf, vectors
+    return vectors
 
-tfidf, course_vectors = build_tfidf(courses)
+course_vectors = build_tfidf(courses)
 
 course_id_to_index = {
     cid: idx for idx, cid in enumerate(courses["course_id"])
 }
 
 # ================= UI =================
-st.title("🎓 Online Course Recommendation System")
+st.title(" Online Course Recommendation System")
 
 user_id = st.text_input(
     "Enter User ID",
@@ -57,7 +57,7 @@ user_id = st.text_input(
 num_recs = st.slider(
     "Number of course recommendations",
     min_value=1,
-    max_value=10,
+    max_value=20,
     value=5,
     step=1
 )
@@ -70,7 +70,6 @@ if st.button("Generate Recommendations"):
         st.stop()
 
     uid = int(user_id) if user_id.isdigit() else user_id
-
     user_data = user_course_ratings[user_course_ratings["user_id"] == uid]
 
     # ---------- COLD START ----------
@@ -80,13 +79,13 @@ if st.button("Generate Recommendations"):
             courses.sort_values("rating", ascending=False)
                    .drop_duplicates("course_name")
                    .head(num_recs)
+                   .reset_index(drop=True)
         )
         st.dataframe(popular, use_container_width=True)
         st.stop()
 
     # ---------- BUILD USER PROFILE ----------
     user_mean = user_data["rating"].mean()
-
     liked_courses = user_data[user_data["rating"] >= user_mean]["course_id"]
 
     liked_indices = [
@@ -95,11 +94,24 @@ if st.button("Generate Recommendations"):
         if cid in course_id_to_index
     ]
 
+    # Safety check
+    if not liked_indices:
+        st.info("Not enough user preference data. Showing popular courses.")
+        popular = (
+            courses.sort_values("rating", ascending=False)
+                   .drop_duplicates("course_name")
+                   .head(num_recs)
+                   .reset_index(drop=True)
+        )
+        st.dataframe(popular, use_container_width=True)
+        st.stop()
+
+    # FIX: Ensure user_profile is 2D
     user_profile = course_vectors[liked_indices].mean(axis=0)
+    user_profile = np.asarray(user_profile).reshape(1, -1)
 
-    # ---------- SCORE ALL COURSES ----------
+    # ---------- COSINE SIMILARITY ----------
     scores = cosine_similarity(course_vectors, user_profile).flatten()
-
     courses["recommendation_score"] = scores
 
     # ---------- REMOVE SEEN COURSES ----------
@@ -107,7 +119,7 @@ if st.button("Generate Recommendations"):
         ~courses["course_id"].isin(user_data["course_id"])
     ]
 
-    # ---------- FINAL TOP-N (UNIQUE) ----------
+    # ---------- FINAL TOP-N UNIQUE ----------
     final_recs = (
         courses_filtered
         .sort_values("recommendation_score", ascending=False)
