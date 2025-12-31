@@ -11,10 +11,10 @@ st.set_page_config(page_title="Hybrid Course Recommender", layout="wide")
 @st.cache_resource
 def load_data():
     try:
-        df = pd.read_csv("data.csv")
+        df = pd.read_excel("online_course_recommendation.xlsx")
         return df
     except Exception as e:
-        st.error(f"Failed to load data.csv: {e}")
+        st.error(f"Failed to load data.excel: {e}")
         st.stop()
 
 df = load_data()
