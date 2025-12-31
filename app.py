@@ -4,15 +4,11 @@ import numpy as np
 
 st.set_page_config(page_title="Course Recommender", layout="wide")
 
-# 🌈 PROFESSIONAL EDUCATION THEME - Light Blue Background
 st.markdown("""
 <style>
-    /* Page Background - Light Blue */
     section[data-testid="stAppViewContainer"] {
         background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%) !important;
     }
-    
-    /* Main Title - Deep Blue */
     .main-header {
         font-size: 3.5rem !important;
         background: linear-gradient(135deg, #1976d2, #42a5f5) !important;
@@ -22,13 +18,9 @@ st.markdown("""
         text-align: center !important;
         margin-bottom: 2rem !important;
     }
-    
-    /* Gold Slider */
     .stSlider > div > div > div > div {
         background: linear-gradient(90deg, #ff9800, #ffc107) !important;
     }
-    
-    /* Emerald Button */
     .stButton > button {
         background: linear-gradient(45deg, #2e7d32, #4caf50) !important;
         color: white !important;
@@ -45,15 +37,11 @@ st.markdown("""
         transform: translateY(-3px) !important;
         box-shadow: 0 12px 35px rgba(76, 175, 80, 0.6) !important;
     }
-    
-    /* Purple Multiselect */
     .stMultiSelect > div > div > div {
         border: 3px solid #7b1fa2 !important;
         border-radius: 15px !important;
         background: linear-gradient(135deg, #f3e5f5, #e1bee7) !important;
     }
-    
-    /* Professional Dataframe */
     .stDataFrame table {
         border-radius: 15px !important;
         box-shadow: 0 10px 30px rgba(0,0,0,0.1) !important;
@@ -63,8 +51,6 @@ st.markdown("""
         color: white !important;
         font-weight: 700 !important;
     }
-    
-    /* Headers */
     .stMarkdown h2 {
         color: #1976d2 !important;
         border-bottom: 4px solid #42a5f5 !important;
@@ -92,7 +78,6 @@ st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
 if st.button("🚀 Generate Recommendations"):
-    # Get UNIQUE courses from recommendations
     unique_courses = df.drop_duplicates(subset=['course_id', 'course_name'])
     
     unique_courses['score'] = unique_courses['rating'] + np.random.normal(0, 0.1, len(unique_courses))
@@ -109,7 +94,6 @@ if st.button("🚀 Generate Recommendations"):
         hide_index=True
     )
     
-    # ✅ Store for Step 5 selection
     st.session_state.recommendations = rec_display
     st.session_state.course_options = rec_display['Course Name'].drop_duplicates().tolist()
 
@@ -122,7 +106,6 @@ if 'recommendations' in st.session_state:
     )
     
     if selected_courses:
-        # ✅ Step 5: FROM RECOMMENDED COURSES ONLY (4.0-5.0 + Different Instructors)
         selected_df = st.session_state.recommendations[
             st.session_state.recommendations['Course Name'].isin(selected_courses)
         ]
@@ -140,15 +123,3 @@ if 'recommendations' in st.session_state:
             col1.metric("🏆 Top Course", best['Course Name'][:40])
             col2.metric("⭐ Rating", f"{best['Rating']:.2f}")
             col3.metric("📈 Score", f"{best['Pred Score']:.2f}")
-
-## ✅ **PERFECT PROFESSIONAL THEME**
-
-### **🎨 Color Scheme:**
-- **Background**: Light Blue Gradient (`#e3f2fd → #90caf9`)
-- **Title**: Deep Blue Gradient
-- **Slider**: Gold (`#ff9800 → #ffc107`)
-- **Button**: Emerald Green (`#2e7d32 → #4caf50`)
-- **Multiselect**: Purple (`#7b1fa2`)
-- **Headers**: Blue with glass effect
-
-### **📊 Step 5 Fixed:**
