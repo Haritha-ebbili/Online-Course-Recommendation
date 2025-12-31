@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Online Course Recommendation System", layout="wide")
@@ -13,6 +15,40 @@ def load_data():
 
 df = load_data()
 
+# ================= COURSE MASTER =================
+@st.cache_resource
+def build_courses(df):
+    return (
+        df.groupby("course_id", as_index=False)
+          .agg({
+              "course_name": "first",
+              "instructor": "first",
+              "rating": "mean"
+          })
+    )
+
+courses = build_courses(df)
+
+# ================= USER HISTORY =================
+@st.cache_resource
+def build_user_history(df):
+    return df.groupby("user_id")["course_id"].apply(set).to_dict()
+
+user_history = build_user_history(df)
+
+# ================= CONTENT SIMILARITY =================
+@st.cache_resource
+def build_similarity(courses):
+    tfidf = TfidfVectorizer(stop_words="english")
+    matrix = tfidf.fit_transform(courses["course_name"].fillna(""))
+    return cosine_similarity(matrix)
+
+similarity_matrix = build_similarity(courses)
+
+course_id_to_index = {
+    cid: idx for idx, cid in enumerate(courses["course_id"])
+}
+
 # ================= COLLABORATIVE FILTERING =================
 global_mean = df["rating"].mean()
 
@@ -23,12 +59,6 @@ user_bias = (
 item_bias = (
     df.groupby("course_id")["rating"].mean() - global_mean
 ).to_dict()
-
-user_history = (
-    df.groupby("user_id")["course_id"]
-      .apply(set)
-      .to_dict()
-)
 
 # ================= UI =================
 st.title("🎓 Online Course Recommendation System")
@@ -54,18 +84,45 @@ if st.button("Generate Recommendations"):
         st.stop()
 
     uid = int(user_id) if user_id.isdigit() else user_id
-    seen = user_history.get(uid, set())
+    seen_courses = user_history.get(uid, set())
     u_bias = user_bias.get(uid, 0)
 
-    # Step 1: score at course_id level
-    df_scores = df[~df["course_id"].isin(seen)].copy()
-    df_scores["recommendation_score"] = (
+    # ---------- STEP 1: BASE SCORE ----------
+    df_scores = df.copy()
+    df_scores["base_score"] = (
         global_mean
         + u_bias
-        + df_scores["course_id"].map(item_bias)
+        + df_scores["course_id"].map(item_bias).fillna(0)
     )
 
-    # Step 2: AGGREGATE AT COURSE NAME LEVEL (🔥 KEY FIX)
+    # ---------- STEP 2: USER HISTORY BOOST ----------
+    if seen_courses:
+        seen_indices = [
+            course_id_to_index[cid]
+            for cid in seen_courses
+            if cid in course_id_to_index
+        ]
+
+        if seen_indices:
+            similarity_boost = similarity_matrix[seen_indices].mean(axis=0)
+            df_scores["similarity_boost"] = df_scores["course_id"].map(
+                lambda cid: similarity_boost[course_id_to_index[cid]]
+                if cid in course_id_to_index else 0
+            )
+        else:
+            df_scores["similarity_boost"] = 0
+    else:
+        df_scores["similarity_boost"] = 0
+
+    # ---------- STEP 3: FINAL SCORE ----------
+    df_scores["recommendation_score"] = (
+        df_scores["base_score"] + 0.5 * df_scores["similarity_boost"]
+    )
+
+    # ---------- STEP 4: REMOVE SEEN COURSES ----------
+    df_scores = df_scores[~df_scores["course_id"].isin(seen_courses)]
+
+    # ---------- STEP 5: UNIQUE COURSE NAMES ----------
     final_recs = (
         df_scores
         .groupby("course_name", as_index=False)
