@@ -5,21 +5,32 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(page_title="Hybrid Course Recommender", layout="wide")
+st.set_page_config(
+    page_title="Online Course Recommendation System",
+    layout="wide"
+)
 
-# ---------------- LOAD DATA ----------------
+# ---------------- LOAD EXCEL DATA ----------------
 @st.cache_resource
 def load_data():
     try:
         df = pd.read_excel("online_course_recommendation.xlsx")
         return df
     except Exception as e:
-        st.error(f"Failed to load data.excel: {e}")
+        st.error(f"Failed to load dataset: {e}")
         st.stop()
 
 df = load_data()
 
-# ---------------- PREPARE DATA ----------------
+# ---------------- COLUMN NORMALIZATION (SAFETY) ----------------
+df.columns = df.columns.str.lower().str.strip()
+
+required_cols = {"user_id", "course_id", "course_name", "instructor", "rating"}
+if not required_cols.issubset(set(df.columns)):
+    st.error(f"Dataset must contain columns: {required_cols}")
+    st.stop()
+
+# ---------------- PREPARE COURSE TABLE ----------------
 courses = (
     df[["course_id", "course_name", "instructor", "rating"]]
     .drop_duplicates("course_id")
@@ -55,10 +66,10 @@ course_id_to_index = {
 }
 
 # ---------------- UI ----------------
-st.title("🎓 Hybrid Course Recommendation System")
-st.caption("No Pickle • Scrollable • Interactive • Duplicate-Free")
+st.title("🎓 Online Course Recommendation System")
+st.caption("Hybrid (Collaborative + Content-Based) | No Pickles | Interactive")
 
-user_input = st.text_input("Enter User ID", value="15796")
+user_input = st.text_input("Enter User ID", value=str(df["user_id"].iloc[0]))
 
 num_recommendations = st.slider(
     "How many courses do you want to recommend?",
@@ -118,12 +129,12 @@ if "initial_df" in st.session_state:
         st.session_state["initial_df"]["course_name"]
     )
 
-    # ---------------- SIMILAR RECOMMENDATION ----------------
+    # ---------------- SIMILAR COURSE RECOMMENDATION ----------------
     if st.button("Recommend Similar Courses"):
 
         selected_row = courses[courses["course_name"] == selected_course].iloc[0]
-        selected_id = selected_row["course_id"]
-        selected_idx = course_id_to_index[selected_id]
+        selected_course_id = selected_row["course_id"]
+        selected_idx = course_id_to_index[selected_course_id]
 
         similarity_scores = list(enumerate(similarity_matrix[selected_idx]))
         similarity_scores.sort(key=lambda x: x[1], reverse=True)
