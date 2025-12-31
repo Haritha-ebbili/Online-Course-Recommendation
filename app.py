@@ -6,25 +6,29 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(
-    page_title="Hybrid Course Recommender",
-    layout="wide"
-)
+st.set_page_config(page_title="Hybrid Course Recommender", layout="wide")
 
-# ---------------- LOAD DATA (NO similarity.pkl) ----------------
+# ---------------- SAFE LOAD ASSETS ----------------
 @st.cache_resource
 def load_assets():
-    courses = pickle.load(open("courses.pkl", "rb"))
-    logic = pickle.load(open("model_logic.pkl", "rb"))
-    return courses.reset_index(drop=True), logic
+    try:
+        courses = pickle.load(open("courses.pkl", "rb"))
+        logic = pickle.load(open("model_logic.pkl", "rb"))
+        return courses.reset_index(drop=True), logic
+    except FileNotFoundError as e:
+        st.error(f"Missing required file: {e}")
+        st.stop()
+    except Exception as e:
+        st.error(f"Error loading model files: {e}")
+        st.stop()
 
 courses, logic = load_assets()
 
-# ---------------- COMPUTE SIMILARITY DYNAMICALLY ----------------
+# ---------------- COMPUTE SIMILARITY (NO PKL FILE) ----------------
 @st.cache_resource
-def compute_similarity(course_names):
+def compute_similarity(names):
     tfidf = TfidfVectorizer(stop_words="english")
-    tfidf_matrix = tfidf.fit_transform(course_names.fillna(""))
+    tfidf_matrix = tfidf.fit_transform(names.fillna(""))
     return cosine_similarity(tfidf_matrix)
 
 similarity_matrix = compute_similarity(courses["course_name"])
@@ -52,8 +56,8 @@ if st.button("Generate Recommendations"):
 
     user_id = int(user_input) if user_input.isdigit() else user_input
 
-    user_bias = logic["user_bias"].get(user_id, 0)
-    history = logic["user_history"].get(user_id, [])
+    user_bias = logic.get("user_bias", {}).get(user_id, 0)
+    history = logic.get("user_history", {}).get(user_id, [])
 
     available = courses[~courses["course_id"].isin(history)].copy()
 
@@ -62,13 +66,10 @@ if st.button("Generate Recommendations"):
         if history else courses["rating"].mean()
     )
 
-    # Collaborative + preference score
     available["score"] = available["course_id"].apply(
-        lambda x: (
-            logic["global_mean"]
-            + user_bias
-            + logic["item_bias"].get(x, 0)
-        )
+        lambda x: logic["global_mean"]
+        + user_bias
+        + logic["item_bias"].get(x, 0)
     ) + 0.3 * (available["rating"] - user_mean)
 
     initial_df = (
@@ -78,7 +79,6 @@ if st.button("Generate Recommendations"):
         .reset_index(drop=True)
     )
 
-    # Session state to avoid duplicates
     st.session_state["shown_courses"] = set(initial_df["course_id"])
     st.session_state["initial_df"] = initial_df
 
@@ -99,34 +99,28 @@ if "initial_df" in st.session_state:
         st.session_state["initial_df"]["course_name"]
     )
 
-    # ---------------- SIMILAR RECOMMENDATION ----------------
+    # ---------------- SIMILAR COURSES ----------------
     if st.button("Recommend Similar Courses"):
 
-        selected_row = courses[
-            courses["course_name"] == selected_course
-        ].iloc[0]
-
+        selected_row = courses[courses["course_name"] == selected_course].iloc[0]
         selected_id = selected_row["course_id"]
         selected_idx = course_id_to_index[selected_id]
 
-        similarity_scores = list(enumerate(similarity_matrix[selected_idx]))
-        similarity_scores.sort(key=lambda x: x[1], reverse=True)
+        scores = list(enumerate(similarity_matrix[selected_idx]))
+        scores.sort(key=lambda x: x[1], reverse=True)
 
-        similar_indices = []
-
-        for idx, _ in similarity_scores:
+        indices = []
+        for idx, _ in scores:
             cid = courses.iloc[idx]["course_id"]
-
             if cid not in st.session_state["shown_courses"]:
-                similar_indices.append(idx)
+                indices.append(idx)
                 st.session_state["shown_courses"].add(cid)
-
-            if len(similar_indices) == num_recommendations:
+            if len(indices) == num_recommendations:
                 break
 
-        similar_df = courses.iloc[similar_indices].copy()
+        similar_df = courses.iloc[indices].copy()
         similar_df["similarity_score"] = [
-            similarity_matrix[selected_idx][i] for i in similar_indices
+            similarity_matrix[selected_idx][i] for i in indices
         ]
 
         st.subheader("🔁 Similar Course Recommendations")
