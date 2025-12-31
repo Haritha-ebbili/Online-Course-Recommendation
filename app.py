@@ -9,6 +9,30 @@ st.set_page_config(
     layout="wide"
 )
 
+# ================= ALLOWED COURSES =================
+ALLOWED_COURSES = {
+    "Python for Beginners",
+    "Cybersecurity for Professionals",
+    "DevOps and Continuous Deployment",
+    "Project Management Fundamentals",
+    "Ethical Hacking Masterclass",
+    "Networking and System Administration",
+    "Personal Finance and Wealth Building",
+    "Blockchain and Decentralized Applications",
+    "Graphic Design with Canva",
+    "Fitness and Nutrition Coaching",
+    "Public Speaking Mastery",
+    "Photography and Video Editing",
+    "Advanced Machine Learning",
+    "Game Development with Unity",
+    "Cloud Computing Essentials",
+    "Mobile App Development with Swift",
+    "Data Visualization with Tableau",
+    "Stock Market and Trading Strategies",
+    "Fundamentals of Digital Marketing",
+    "AI for Business Leaders"
+}
+
 # ================= LOAD DATA =================
 @st.cache_resource
 def load_data():
@@ -18,10 +42,10 @@ def load_data():
 
 df = load_data()
 
-# ================= COURSE MASTER =================
+# ================= COURSE MASTER (FILTERED) =================
 @st.cache_resource
 def build_courses(df):
-    return (
+    courses = (
         df.groupby("course_id", as_index=False)
           .agg({
               "course_name": "first",
@@ -29,15 +53,22 @@ def build_courses(df):
               "rating": "mean"
           })
     )
+    return courses[courses["course_name"].isin(ALLOWED_COURSES)].reset_index(drop=True)
 
 courses = build_courses(df)
 
 # ================= USER HISTORY =================
 @st.cache_resource
-def build_user_history(df):
-    return df.groupby("user_id")["course_id"].apply(set).to_dict()
+def build_user_history(df, courses):
+    allowed_ids = set(courses["course_id"])
+    return (
+        df[df["course_id"].isin(allowed_ids)]
+        .groupby("user_id")["course_id"]
+        .apply(set)
+        .to_dict()
+    )
 
-user_history = build_user_history(df)
+user_history = build_user_history(df, courses)
 
 # ================= CONTENT SIMILARITY =================
 @st.cache_resource
@@ -53,17 +84,25 @@ course_id_to_index = {
 }
 
 # ================= COLLABORATIVE FILTERING =================
-global_mean = df["rating"].mean()
-user_bias = (df.groupby("user_id")["rating"].mean() - global_mean).to_dict()
-item_bias = (df.groupby("course_id")["rating"].mean() - global_mean).to_dict()
+global_mean = df[df["course_name"].isin(ALLOWED_COURSES)]["rating"].mean()
+
+user_bias = (
+    df[df["course_name"].isin(ALLOWED_COURSES)]
+    .groupby("user_id")["rating"].mean() - global_mean
+).to_dict()
+
+item_bias = (
+    df[df["course_name"].isin(ALLOWED_COURSES)]
+    .groupby("course_id")["rating"].mean() - global_mean
+).to_dict()
 
 # ================= UI =================
 st.title("🎓 Online Course Recommendation System")
-st.caption("Model Output + Highest-Rated Similar Course Recommendations")
+st.caption("Recommendations limited to curated course list")
 
 user_id = st.text_input(
     "Enter User ID",
-    placeholder="Enter a valid User ID (e.g., 15796)"
+    placeholder="Enter User ID (e.g., 15796)"
 )
 
 num_recs = st.slider(
@@ -74,7 +113,7 @@ num_recs = st.slider(
     step=1
 )
 
-# ================= GENERATE TOP-N =================
+# ================= TOP-N RECOMMENDATIONS =================
 if st.button("Generate Recommendations"):
 
     if not user_id.strip():
@@ -87,7 +126,6 @@ if st.button("Generate Recommendations"):
 
     recs = courses[~courses["course_id"].isin(seen)].copy()
 
-    # 🔹 MODEL BUILDING SCORE (EXACT)
     recs["recommendation_score"] = recs["course_id"].apply(
         lambda cid: global_mean + u_bias + item_bias.get(cid, 0)
     )
@@ -140,10 +178,8 @@ if "top_recs" in st.session_state:
 
             if idx == selected_idx:
                 continue
-
             if cid in st.session_state["shown_courses"]:
                 continue
-
             if sim_score < SIM_THRESHOLD:
                 break
 
