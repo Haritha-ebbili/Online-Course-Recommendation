@@ -4,76 +4,74 @@ import pickle
 import numpy as np
 import os
 
-# Page config
 st.set_page_config(page_title="Course Recommender", layout="wide")
 
-# Smart pickle loader (full_data.pkl OR fulldata.pkl)
 @st.cache_data
 def load_models():
+    # Auto-detect full_data.pkl OR fulldata.pkl
     fulldata_file = 'fulldata.pkl' if os.path.exists('fulldata.pkl') else 'full_data.pkl'
     
     try:
         fulldata = pd.read_pickle(fulldata_file)
-        traindata = pd.read_pickle('traindata.pkl')
-        with open('tfidf.pkl', 'rb') as f:
-            tfidf = pickle.load(f)
         with open('biases.pkl', 'rb') as f:
             biases = pickle.load(f)
-        return fulldata, traindata, tfidf, biases
+        st.sidebar.success(f"✅ Loaded: {fulldata_file} + biases.pkl")
+        return fulldata, biases
     except FileNotFoundError as e:
         st.error(f"❌ Missing: {e.filename}")
-        st.error("""
-**Need these 4 files:**
-        """)
+        st.error("**Need ONLY these 2 files:**")
+        st.error("```
+full_data.pkl (or fulldata.pkl)
+biases.pkl
+        ```")
         st.stop()
 
 # Load data
-fulldata, traindata, tfidf, biases = load_models()
+fulldata, biases = load_models()
 global_mean = biases['globalmean']
 user_bias = biases['userbias']
 item_bias = biases['itembias']
 
-# Course info
-courselookup = fulldata[['courseid', 'coursename', 'instructor', 'rating']].drop_duplicates(subset='courseid')
+# Course catalog
+courses = fulldata[['courseid', 'coursename', 'instructor', 'rating']].drop_duplicates(subset='courseid')
 
 st.title("🎓 Course Recommendation System")
-st.markdown("**Enter User ID** → **Get Recommendations** → **Select Courses** → **High-rated picks**")
+st.markdown("**User ID** → **Recommendations** → **Select** → **High-rated + Different Instructors**")
 
 # User input
 user_id = st.number_input("👤 User ID", min_value=1, max_value=49999, value=15796)
 
-# Hybrid model prediction
 def predict_score(userid, courseid):
+    """Hybrid model: Global mean + User bias + Item bias"""
     bu = user_bias.get(userid, 0)
     bi = item_bias.get(courseid, 0)
     return global_mean + bu + bi
 
 def get_recommendations(userid, n=15):
-    # User's seen courses
-    seen = set(traindata[traindata['userid'] == userid]['courseid'].values)
-    # Unseen courses
-    candidates = set(courselookup['courseid']) - seen
+    """Generate top N recommendations"""
+    # All available courses
+    candidates = courses['courseid'].tolist()
     
-    # Score all candidates (limit for speed)
+    # Score candidates
     scores = []
-    for cid in list(candidates)[:100]:
+    for cid in candidates[:100]:  # Fast computation
         score = predict_score(userid, cid)
         scores.append({'courseid': cid, 'score': score})
     
-    # Top N recommendations
+    # Top recommendations
     recs = sorted(scores, key=lambda x: x['score'], reverse=True)[:n]
-    rec_df = pd.DataFrame(recs).merge(courselookup, on='courseid')
+    rec_df = pd.DataFrame(recs).merge(courses, on='courseid')
     return rec_df
 
-# RECOMMEND button
-if st.button("🚀 Generate Recommendations", type="primary"):
-    with st.spinner("Computing recommendations..."):
+# Generate recommendations
+if st.button("🚀 Get Recommendations", type="primary"):
+    with st.spinner("Generating recommendations..."):
         recs = get_recommendations(user_id)
     
-    st.success(f"✅ {len(recs)} courses recommended for User **{user_id}**!")
+    st.success(f"✅ {len(recs)} recommendations for User **{user_id}**!")
     
-    # Show top 10
-    st.subheader("📊 Top Recommendations")
+    # Top 10 table
+    st.subheader("📚 Top Recommendations")
     top10 = recs.head(10)[['coursename', 'instructor', 'rating', 'score']]
     st.dataframe(
         top10,
@@ -85,52 +83,56 @@ if st.button("🚀 Generate Recommendations", type="primary"):
         }
     )
     
-    # Select courses
-    st.subheader("🔍 Pick Courses to Filter")
-    course_options = recs.head(15)['coursename'].tolist()
-    selected = st.multiselect("Select from recommendations:", course_options, 
-                             default=course_options[:3])
+    # Course selection
+    st.subheader("🔍 Select Courses")
+    options = recs.head(15)['coursename'].tolist()
+    selected = st.multiselect("Choose courses:", options, default=options[:3])
     
     if selected:
         filtered = recs[recs['coursename'].isin(selected)]
         
-        # High rating (4.5+) + unique instructors
+        # Filter: 4.5+ rating + different instructors
         high_rated = filtered[filtered['rating'] >= 4.5].drop_duplicates('instructor')
         
         if len(high_rated) > 0:
             best = high_rated.iloc[0]
             st.balloons()
             st.markdown(f"""
-            ## 🎯 **TOP PICK**
+            ## 🎯 **BEST PICK**
             **{best['coursename']}**  
             👨‍🏫 *{best['instructor']}*  
             ⭐ **{best['rating']:.2f}** | 📈 **{best['score']:.3f}**
             """)
             
-            st.subheader("⭐ All 4.5+ Rating Options")
+            st.subheader("⭐ All High-Rated (4.5+)")
             st.dataframe(high_rated[['coursename', 'instructor', 'rating', 'score']])
         else:
-            st.warning("No 4.5+ courses. Best options:")
+            st.info("ℹ️ No 4.5+ ratings. Best available:")
             st.dataframe(filtered.sort_values('score', ascending=False))
 
 # Sidebar
 with st.sidebar:
-    st.header("📋 Instructions")
+    st.header("✅ File Status")
+    st.success("**ONLY needs:**")
+    st.markdown("```
+✅ full_data.pkl (or fulldata.pkl)
+✅ biases.pkl
+❌ NO traindata.pkl needed!
+    ```")
+    
+    st.header("🚀 Quick Start")
     st.markdown("""
-    1. Enter **User ID** (1-49999)
-    2. Click **Generate Recommendations**
-    3. Select courses from list
-    4. View **4.5+ rated courses** with **different instructors**
+    1. Put your 2 pickle files in same folder
+    2. `pip install streamlit pandas numpy`
+    3. `streamlit run app.py`
+    4. Enter User ID → Get recommendations!
     """)
     
-    st.header("✅ File Check")
-    files = ['full_data.pkl', 'fulldata.pkl', 'traindata.pkl', 'tfidf.pkl', 'biases.pkl']
-    for f in files:
-        status = "✅" if os.path.exists(f) else "❌"
-        st.write(f"{status} {f}")
-    
-    st.header("💻 Run")
-    st.code("pip install streamlit pandas numpy\nstreamlit run app.py")
+    st.header("🎯 Features")
+    st.markdown("- Hybrid model predictions")
+    st.markdown("- High-rated course filtering")
+    st.markdown("- Different instructor selection")
+    st.markdown("- No external dependencies")
 
 st.markdown("---")
-st.caption("🛠️ Hybrid Model (Collaborative Filtering + Biases) from your notebook")
+st.caption("🛠️ Your Hybrid Recommendation Model - Ready to Deploy!")
