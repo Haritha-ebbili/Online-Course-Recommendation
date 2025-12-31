@@ -10,27 +10,23 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------- LOAD EXCEL DATA ----------------
+# ---------------- LOAD DATA ----------------
 @st.cache_resource
 def load_data():
-    try:
-        df = pd.read_excel("online_course_recommendation.xlsx")
-        return df
-    except Exception as e:
-        st.error(f"Failed to load dataset: {e}")
-        st.stop()
+    df = pd.read_excel("online_course_recommendation.xlsx")
+    return df
 
 df = load_data()
 
-# ---------------- COLUMN NORMALIZATION (SAFETY) ----------------
+# ---------------- CLEAN COLUMNS ----------------
 df.columns = df.columns.str.lower().str.strip()
 
 required_cols = {"user_id", "course_id", "course_name", "instructor", "rating"}
-if not required_cols.issubset(set(df.columns)):
+if not required_cols.issubset(df.columns):
     st.error(f"Dataset must contain columns: {required_cols}")
     st.stop()
 
-# ---------------- PREPARE COURSE TABLE ----------------
+# ---------------- COURSE MASTER TABLE ----------------
 courses = (
     df[["course_id", "course_name", "instructor", "rating"]]
     .drop_duplicates("course_id")
@@ -40,17 +36,9 @@ courses = (
 # ---------------- COLLABORATIVE FILTERING ----------------
 global_mean = df["rating"].mean()
 
-user_bias = (
-    df.groupby("user_id")["rating"].mean() - global_mean
-).to_dict()
-
-item_bias = (
-    df.groupby("course_id")["rating"].mean() - global_mean
-).to_dict()
-
-user_history = (
-    df.groupby("user_id")["course_id"].apply(list).to_dict()
-)
+user_bias = (df.groupby("user_id")["rating"].mean() - global_mean).to_dict()
+item_bias = (df.groupby("course_id")["rating"].mean() - global_mean).to_dict()
+user_history = df.groupby("user_id")["course_id"].apply(list).to_dict()
 
 # ---------------- CONTENT-BASED SIMILARITY ----------------
 @st.cache_resource
@@ -67,25 +55,27 @@ course_id_to_index = {
 
 # ---------------- UI ----------------
 st.title("🎓 Online Course Recommendation System")
-st.caption("Hybrid (Collaborative + Content-Based) | No Pickles | Interactive")
+st.caption("Highest-Rated Similar Course Recommendation")
 
-user_input = st.text_input("Enter User ID", value=str(df["user_id"].iloc[0]))
+user_input = st.text_input(
+    "Enter User ID",
+    value=str(df["user_id"].iloc[0])
+)
 
 num_recommendations = st.slider(
-    "How many courses do you want to recommend?",
+    "Number of course recommendations",
     min_value=5,
-    max_value=50,
+    max_value=20,
     value=10,
     step=5
 )
 
-# ---------------- INITIAL RECOMMENDATION ----------------
+# ---------------- INITIAL RECOMMENDATIONS ----------------
 if st.button("Generate Recommendations"):
 
     user_id = int(user_input) if user_input.isdigit() else user_input
-
-    u_bias = user_bias.get(user_id, 0)
     history = user_history.get(user_id, [])
+    u_bias = user_bias.get(user_id, 0)
 
     available = courses[~courses["course_id"].isin(history)].copy()
 
@@ -94,13 +84,12 @@ if st.button("Generate Recommendations"):
         if history else df["rating"].mean()
     )
 
-    available["score"] = available["course_id"].apply(
-        lambda cid: (
-            global_mean
-            + u_bias
-            + item_bias.get(cid, 0)
-        )
-    ) + 0.3 * (available["rating"] - user_mean)
+    available["score"] = (
+        global_mean
+        + u_bias
+        + available["course_id"].map(item_bias).fillna(0)
+        + 0.3 * (available["rating"] - user_mean)
+    )
 
     initial_df = (
         available
@@ -109,13 +98,13 @@ if st.button("Generate Recommendations"):
         .reset_index(drop=True)
     )
 
-    st.session_state["shown_courses"] = set(initial_df["course_id"])
     st.session_state["initial_df"] = initial_df
+    st.session_state["shown_courses"] = set(initial_df["course_id"])
 
-# ---------------- DISPLAY INITIAL RESULTS ----------------
+# ---------------- DISPLAY INITIAL ----------------
 if "initial_df" in st.session_state:
 
-    st.subheader("📌 Recommended Courses (Scrollable)")
+    st.subheader("📌 Recommended Courses")
     st.dataframe(
         st.session_state["initial_df"][
             ["course_id", "course_name", "instructor", "rating"]
@@ -125,39 +114,65 @@ if "initial_df" in st.session_state:
     )
 
     selected_course = st.selectbox(
-        "Select a course to get similar recommendations",
+        "Select a course to get highest-rated similar courses",
         st.session_state["initial_df"]["course_name"]
     )
 
-    # ---------------- SIMILAR COURSE RECOMMENDATION ----------------
-    if st.button("Recommend Similar Courses"):
+    # ---------------- BEST SIMILAR COURSES ----------------
+    if st.button("Recommend Highest-Rated Similar Courses"):
 
         selected_row = courses[courses["course_name"] == selected_course].iloc[0]
-        selected_course_id = selected_row["course_id"]
-        selected_idx = course_id_to_index[selected_course_id]
+        selected_idx = course_id_to_index[selected_row["course_id"]]
 
         similarity_scores = list(enumerate(similarity_matrix[selected_idx]))
         similarity_scores.sort(key=lambda x: x[1], reverse=True)
 
-        indices = []
-        for idx, _ in similarity_scores:
+        TOP_K = 5
+        SIM_THRESHOLD = 0.35
+
+        filtered = []
+
+        for idx, sim_score in similarity_scores:
             cid = courses.iloc[idx]["course_id"]
-            if cid not in st.session_state["shown_courses"]:
-                indices.append(idx)
-                st.session_state["shown_courses"].add(cid)
-            if len(indices) == num_recommendations:
+
+            if idx == selected_idx:
+                continue
+
+            if cid in st.session_state["shown_courses"]:
+                continue
+
+            if sim_score < SIM_THRESHOLD:
                 break
 
-        similar_df = courses.iloc[indices].copy()
+            filtered.append({
+                "index": idx,
+                "similarity": sim_score,
+                "rating": courses.iloc[idx]["rating"]
+            })
+
+        filtered = sorted(
+            filtered,
+            key=lambda x: (x["similarity"], x["rating"]),
+            reverse=True
+        )[:TOP_K]
+
+        best_indices = [item["index"] for item in filtered]
+
+        similar_df = courses.iloc[best_indices].copy()
         similar_df["similarity_score"] = [
-            similarity_matrix[selected_idx][i] for i in indices
+            similarity_matrix[selected_idx][i] for i in best_indices
         ]
 
-        st.subheader("🔁 Similar Course Recommendations")
+        similar_df = similar_df.sort_values(
+            by=["similarity_score", "rating"],
+            ascending=[False, False]
+        )
+
+        st.subheader("⭐ Highest-Rated Similar Courses")
         st.dataframe(
             similar_df[
                 ["course_id", "course_name", "instructor", "rating", "similarity_score"]
             ],
-            height=400,
+            height=350,
             use_container_width=True
         )
