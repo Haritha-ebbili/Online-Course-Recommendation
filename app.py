@@ -78,10 +78,11 @@ st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
 if st.button("🚀 Generate Recommendations"):
-    unique_courses = df.drop_duplicates(subset=['course_id', 'course_name'])
+    # ✅ UNIQUE COURSE NAMES ONLY
+    unique_by_name = df.drop_duplicates(subset='course_name')
     
-    unique_courses['score'] = unique_courses['rating'] + np.random.normal(0, 0.1, len(unique_courses))
-    recommendations = unique_courses.nlargest(num_recommendations, 'score')
+    unique_by_name['score'] = unique_by_name['rating'] + np.random.normal(0, 0.1, len(unique_by_name))
+    recommendations = unique_by_name.nlargest(num_recommendations, 'score')
     
     st.header("Step 3: Recommended Courses")
     display_cols = ['course_name', 'instructor', 'rating', 'score']
@@ -95,7 +96,7 @@ if st.button("🚀 Generate Recommendations"):
     )
     
     st.session_state.recommendations = rec_display
-    st.session_state.course_options = rec_display['Course Name'].drop_duplicates().tolist()
+    st.session_state.course_options = rec_display['Course Name'].tolist()
 
 if 'recommendations' in st.session_state:
     st.header("Step 4: Select Courses")
@@ -110,16 +111,8 @@ if 'recommendations' in st.session_state:
             st.session_state.recommendations['Course Name'].isin(selected_courses)
         ]
         
-        high_rated = selected_df[
-            (selected_df['Rating'] >= 4.0) & (selected_df['Rating'] <= 5.0)
-        ].drop_duplicates(subset='Instructor')
+        # ✅ NEW Step 5: Different instructors + Different ratings ONLY DATAFRAME
+        step5_result = selected_df.drop_duplicates(subset=['Instructor', 'Rating'])
         
-        st.header("Step 5: Selected Courses from Recommendations (4.0-5.0)")
-        st.dataframe(high_rated[['Course Name', 'Instructor', 'Rating', 'Pred Score']])
-        
-        if len(high_rated) > 0:
-            best = high_rated.iloc[0]
-            col1, col2, col3 = st.columns(3)
-            col1.metric("🏆 Top Course", best['Course Name'][:40])
-            col2.metric("⭐ Rating", f"{best['Rating']:.2f}")
-            col3.metric("📈 Score", f"{best['Pred Score']:.2f}")
+        st.header("Step 5: Selected Courses (Different Instructors & Ratings)")
+        st.dataframe(step5_result[['Course Name', 'Instructor', 'Rating', 'Pred Score']])
