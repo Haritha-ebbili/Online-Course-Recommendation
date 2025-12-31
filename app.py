@@ -57,7 +57,7 @@ def cf_predict(user_id, course_id):
 def hybrid_score(user_id, course_id):
     return 0.6 * cf_predict(user_id, course_id) + 0.4 * content_predict(course_id)
 
-def get_recommendations(user_id, n=10, max_price=500, min_rating=3.0):
+def get_recommendations(user_id, n=20, max_price=500, min_rating=3.0):
     user_courses = set(df[df[user_col] == user_id][course_col].unique())
     candidates = df[~df[course_col].isin(user_courses)].copy()
     
@@ -73,7 +73,7 @@ st.info(f" Using columns: User={user_col}, Course={course_col}, Name={name_col}"
 
 st.sidebar.header("Controls")
 user_id = st.sidebar.number_input("User ID", 1, 49999, 15796)
-n_recs = st.sidebar.slider("# Recommendations", 5, 20, 10)
+n_recs = st.sidebar.slider("# Recommendations (0-20)", 0, 20, 10)
 max_price = st.sidebar.slider("Max Price", 0, 500, 400)
 min_rating = st.sidebar.slider("Min Rating", 1.0, 5.0, 3.5)
 
@@ -91,17 +91,20 @@ st.subheader(f"Recommendations for User #{user_id}")
 recommendations = get_recommendations(user_id, n_recs, max_price, min_rating)
 
 if not recommendations.empty:
-    for i, (_, rec) in enumerate(recommendations.iterrows(), 1):
-        with st.expander(f"**{i}. {rec[name_col]}** {rec['rating']:.1f}"):
+    for i, (_, rec) in enumerate(recommendations.iterrows(), 0):  # STARTS FROM 0
+        if i >= n_recs:  # Limit to selected number
+            break
+        with st.expander(f"**{i}. {rec[name_col]}** ⭐{rec['rating']:.1f} | 💰${rec[price_col]:.0f}"):
             col1, col2 = st.columns(2)
             with col1:
-                st.write(f"**Instructor:** {rec[instructor_col]}")
-                st.write(f"**Price:** ${rec[price_col]:.0f}")
+                st.write(f"**👨‍🏫 Instructor:** {rec[instructor_col]}")
+                st.write(f"**⏱️ Duration:** {rec.get('coursedurationhours', 'N/A'):.1f}h")
+                st.write(f"**👥 Enrollments:** {rec.get('enrollmentnumbers', 0):,.0f}")
             with col2:
-                st.metric("Score", f"{rec['score']:.2f}")
+                st.metric("🎯 Score", f"{rec['score']:.2f}")
+                st.progress(min(rec['rating'] / 5.0, 1.0))
 else:
     st.warning("No recommendations found!")
 
 st.markdown("---")
-st.success(" 100% WORKING - Dynamic Column Detection!")
-
+st.success("✅ Recommendations start from 0 to 20 as requested!")
