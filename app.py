@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Online Course Recommendation System", layout="wide")
@@ -17,43 +17,34 @@ def load_data():
 df = load_data()
 
 # ================= COURSE MASTER =================
+courses = (
+    df.groupby("course_id", as_index=False)
+      .agg({
+          "course_name": "first",
+          "instructor": "first",
+          "rating": "mean"
+      })
+)
+
+# ================= USER HISTORY WITH RATINGS =================
+user_course_ratings = (
+    df.groupby(["user_id", "course_id"])["rating"]
+      .mean()
+      .reset_index()
+)
+
+# ================= TF-IDF COURSE VECTORS =================
 @st.cache_resource
-def build_courses(df):
-    return (
-        df.groupby("course_id", as_index=False)
-          .agg({
-              "course_name": "first",
-              "instructor": "first",
-              "rating": "mean"
-          })
-    )
-
-courses = build_courses(df)
-
-# ================= USER HISTORY =================
-@st.cache_resource
-def build_user_history(df):
-    return df.groupby("user_id")["course_id"].apply(set).to_dict()
-
-user_history = build_user_history(df)
-
-# ================= CONTENT SIMILARITY =================
-@st.cache_resource
-def build_similarity(courses):
+def build_tfidf(courses):
     tfidf = TfidfVectorizer(stop_words="english")
-    matrix = tfidf.fit_transform(courses["course_name"].fillna(""))
-    return cosine_similarity(matrix)
+    vectors = tfidf.fit_transform(courses["course_name"].fillna(""))
+    return tfidf, vectors
 
-similarity_matrix = build_similarity(courses)
+tfidf, course_vectors = build_tfidf(courses)
 
 course_id_to_index = {
     cid: idx for idx, cid in enumerate(courses["course_id"])
 }
-
-# ================= COLLABORATIVE FILTERING =================
-global_mean = df["rating"].mean()
-user_bias = (df.groupby("user_id")["rating"].mean() - global_mean).to_dict()
-item_bias = (df.groupby("course_id")["rating"].mean() - global_mean).to_dict()
 
 # ================= UI =================
 st.title("🎓 Online Course Recommendation System")
@@ -79,56 +70,55 @@ if st.button("Generate Recommendations"):
         st.stop()
 
     uid = int(user_id) if user_id.isdigit() else user_id
-    seen_courses = user_history.get(uid, set())
-    u_bias = user_bias.get(uid, 0)
 
-    scores = []
+    user_data = user_course_ratings[user_course_ratings["user_id"] == uid]
 
-    for _, row in courses.iterrows():
-        cid = row["course_id"]
-
-        if cid in seen_courses:
-            continue
-
-        # ---- similarity to user's own history ----
-        if seen_courses:
-            sim_vals = [
-                similarity_matrix[course_id_to_index[cid]][course_id_to_index[sc]]
-                for sc in seen_courses
-                if sc in course_id_to_index
-            ]
-            sim_score = np.mean(sim_vals) if sim_vals else 0
-        else:
-            sim_score = 0
-
-        final_score = (
-            global_mean
-            + u_bias
-            + item_bias.get(cid, 0)
-            + 0.7 * sim_score
+    # ---------- COLD START ----------
+    if user_data.empty:
+        st.info("Cold-start user detected. Showing popular courses.")
+        popular = (
+            courses.sort_values("rating", ascending=False)
+                   .drop_duplicates("course_name")
+                   .head(num_recs)
         )
+        st.dataframe(popular, use_container_width=True)
+        st.stop()
 
-        scores.append({
-            "course_id": cid,
-            "recommendation_score": final_score,
-            "course_name": row["course_name"],
-            "instructor": row["instructor"],
-            "rating": row["rating"]
-        })
+    # ---------- BUILD USER PROFILE ----------
+    user_mean = user_data["rating"].mean()
 
-    rec_df = pd.DataFrame(scores)
+    liked_courses = user_data[user_data["rating"] >= user_mean]["course_id"]
 
-    # 🔥 ENSURE UNIQUE COURSE NAMES
-    rec_df = (
-        rec_df.sort_values("recommendation_score", ascending=False)
-              .drop_duplicates("course_name")
-              .head(num_recs)
-              .reset_index(drop=True)
+    liked_indices = [
+        course_id_to_index[cid]
+        for cid in liked_courses
+        if cid in course_id_to_index
+    ]
+
+    user_profile = course_vectors[liked_indices].mean(axis=0)
+
+    # ---------- SCORE ALL COURSES ----------
+    scores = cosine_similarity(course_vectors, user_profile).flatten()
+
+    courses["recommendation_score"] = scores
+
+    # ---------- REMOVE SEEN COURSES ----------
+    courses_filtered = courses[
+        ~courses["course_id"].isin(user_data["course_id"])
+    ]
+
+    # ---------- FINAL TOP-N (UNIQUE) ----------
+    final_recs = (
+        courses_filtered
+        .sort_values("recommendation_score", ascending=False)
+        .drop_duplicates("course_name")
+        .head(num_recs)
+        .reset_index(drop=True)
     )
 
     st.subheader(f"Top Recommendations for User {uid}")
     st.dataframe(
-        rec_df[
+        final_recs[
             [
                 "course_id",
                 "recommendation_score",
