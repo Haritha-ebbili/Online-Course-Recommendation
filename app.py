@@ -4,81 +4,75 @@ import numpy as np
 
 st.set_page_config(page_title="Course Recommender", layout="wide")
 
-# 🖤 BLACK THEME - Course Recommendation System
+# 🌈 PROFESSIONAL EDUCATION THEME - Light Blue Background
 st.markdown("""
 <style>
-    /* Black Theme */
+    /* Page Background - Light Blue */
+    section[data-testid="stAppViewContainer"] {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%) !important;
+    }
+    
+    /* Main Title - Deep Blue */
     .main-header {
         font-size: 3.5rem !important;
-        color: #000000 !important;
+        background: linear-gradient(135deg, #1976d2, #42a5f5) !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
         font-weight: 800 !important;
-        text-align: center;
-        margin-bottom: 2rem;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        text-align: center !important;
+        margin-bottom: 2rem !important;
     }
     
-    /* Black Background */
-    section[data-testid="stAppViewContainer"] {
-        background-color: #1a1a1a !important;
-        color: #ffffff !important;
-    }
-    
-    /* Black Slider */
+    /* Gold Slider */
     .stSlider > div > div > div > div {
-        background: linear-gradient(90deg, #333333, #000000) !important;
+        background: linear-gradient(90deg, #ff9800, #ffc107) !important;
     }
     
-    /* Black Button */
+    /* Emerald Button */
     .stButton > button {
-        background: linear-gradient(45deg, #000000, #333333) !important;
-        color: #ffffff !important;
-        border: 2px solid #666666 !important;
+        background: linear-gradient(45deg, #2e7d32, #4caf50) !important;
+        color: white !important;
+        border: none !important;
         border-radius: 50px !important;
         padding: 15px 40px !important;
         font-weight: 700 !important;
         font-size: 18px !important;
-        box-shadow: 0 8px 25px rgba(0,0,0,0.8) !important;
+        box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4) !important;
         transition: all 0.4s ease !important;
     }
     .stButton > button:hover {
-        background: linear-gradient(45deg, #333333, #000000) !important;
-        box-shadow: 0 12px 35px rgba(0,0,0,1) !important;
-        border-color: #ffffff !important;
+        background: linear-gradient(45deg, #388e3c, #66bb6a) !important;
+        transform: translateY(-3px) !important;
+        box-shadow: 0 12px 35px rgba(76, 175, 80, 0.6) !important;
     }
     
-    /* Black Multiselect */
+    /* Purple Multiselect */
     .stMultiSelect > div > div > div {
-        border: 3px solid #444444 !important;
+        border: 3px solid #7b1fa2 !important;
         border-radius: 15px !important;
-        background: #2a2a2a !important;
-        color: #ffffff !important;
+        background: linear-gradient(135deg, #f3e5f5, #e1bee7) !important;
     }
     
-    /* Black Dataframe */
+    /* Professional Dataframe */
     .stDataFrame table {
         border-radius: 15px !important;
-        background: #2a2a2a !important;
-        color: #ffffff !important;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1) !important;
     }
     .stDataFrame thead tr th {
-        background: linear-gradient(90deg, #000000, #333333) !important;
-        color: #ffffff !important;
+        background: linear-gradient(90deg, #1976d2, #42a5f5) !important;
+        color: white !important;
         font-weight: 700 !important;
     }
-    .stDataFrame tbody tr td {
-        background: #2a2a2a !important;
-        color: #ffffff !important;
-        border-color: #444444 !important;
-    }
     
-    /* Black Headers */
+    /* Headers */
     .stMarkdown h2 {
-        color: #ffffff !important;
-        border-bottom: 3px solid #333333 !important;
-        padding-bottom: 10px !important;
-        background: #000000 !important;
-        padding: 15px !important;
-        border-radius: 10px !important;
+        color: #1976d2 !important;
+        border-bottom: 4px solid #42a5f5 !important;
+        padding-bottom: 12px !important;
+        background: rgba(255,255,255,0.8) !important;
+        padding: 20px !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -97,7 +91,8 @@ user_id = st.number_input("User ID", min_value=1, max_value=49999, value=15796)
 st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
-if st.button("Generate Recommendations"):
+if st.button("🚀 Generate Recommendations"):
+    # Get UNIQUE courses from recommendations
     unique_courses = df.drop_duplicates(subset=['course_id', 'course_name'])
     
     unique_courses['score'] = unique_courses['rating'] + np.random.normal(0, 0.1, len(unique_courses))
@@ -114,6 +109,7 @@ if st.button("Generate Recommendations"):
         hide_index=True
     )
     
+    # ✅ Store for Step 5 selection
     st.session_state.recommendations = rec_display
     st.session_state.course_options = rec_display['Course Name'].drop_duplicates().tolist()
 
@@ -126,21 +122,33 @@ if 'recommendations' in st.session_state:
     )
     
     if selected_courses:
+        # ✅ Step 5: FROM RECOMMENDED COURSES ONLY (4.0-5.0 + Different Instructors)
         selected_df = st.session_state.recommendations[
             st.session_state.recommendations['Course Name'].isin(selected_courses)
         ]
         
-        # ✅ Step 5: 4.0-5.0 + DIFFERENT INSTRUCTORS
         high_rated = selected_df[
             (selected_df['Rating'] >= 4.0) & (selected_df['Rating'] <= 5.0)
         ].drop_duplicates(subset='Instructor')
         
-        st.header("Step 5: Selected Courses (4.0-5.0, Different Instructors)")
+        st.header("Step 5: Selected Courses from Recommendations (4.0-5.0)")
         st.dataframe(high_rated[['Course Name', 'Instructor', 'Rating', 'Pred Score']])
         
         if len(high_rated) > 0:
             best = high_rated.iloc[0]
             col1, col2, col3 = st.columns(3)
-            col1.metric("Top Course", best['Course Name'][:40])
-            col2.metric("Rating", f"{best['Rating']:.2f}")
-            col3.metric("Score", f"{best['Pred Score']:.2f}")
+            col1.metric("🏆 Top Course", best['Course Name'][:40])
+            col2.metric("⭐ Rating", f"{best['Rating']:.2f}")
+            col3.metric("📈 Score", f"{best['Pred Score']:.2f}")
+
+## ✅ **PERFECT PROFESSIONAL THEME**
+
+### **🎨 Color Scheme:**
+- **Background**: Light Blue Gradient (`#e3f2fd → #90caf9`)
+- **Title**: Deep Blue Gradient
+- **Slider**: Gold (`#ff9800 → #ffc107`)
+- **Button**: Emerald Green (`#2e7d32 → #4caf50`)
+- **Multiselect**: Purple (`#7b1fa2`)
+- **Headers**: Blue with glass effect
+
+### **📊 Step 5 Fixed:**
