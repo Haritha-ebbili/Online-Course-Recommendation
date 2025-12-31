@@ -12,9 +12,6 @@ def load_data():
         st.stop()
     
     data = pd.read_pickle('full_data.pkl')
-    st.sidebar.subheader("📊 Data Info")
-    st.sidebar.write("Columns:", data.columns.tolist())
-    st.sidebar.write("Shape:", data.shape)
     return data
 
 # Load data
@@ -32,8 +29,8 @@ num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
 # Generate button
 if st.button("🚀 Generate Recommendations", type="primary"):
-    # ✅ UNIQUE COURSES ONLY - No duplicates
-    unique_courses = df.drop_duplicates(subset=df.columns[1])  # First string column as course ID
+    # UNIQUE COURSES ONLY - No duplicates
+    unique_courses = df.drop_duplicates(subset=df.columns[1])  
     
     # Use first numeric column as rating
     numeric_cols = unique_courses.select_dtypes(include=[np.number]).columns
@@ -48,7 +45,7 @@ if st.button("🚀 Generate Recommendations", type="primary"):
     course_col = string_cols[0] if len(string_cols) > 0 else 'Course'
     instructor_col = string_cols[1] if len(string_cols) > 1 else 'Instructor'
     
-    # ✅ UNIQUE recommendations with scores
+    # UNIQUE recommendations with scores
     unique_courses['score'] = unique_courses['rating'] + np.random.normal(0, 0.1, len(unique_courses))
     recommendations = unique_courses.nlargest(num_recommendations, 'score')
     
@@ -80,7 +77,7 @@ if 'recommendations' in st.session_state:
     selected_courses = st.multiselect(
         "Choose courses from recommendations (MANUAL selection):",
         st.session_state.course_options,
-        default=[]  # ✅ MANUAL - NO pre-selection
+        default=[]  
     )
     
     # STEP 5: High-rated results
@@ -93,7 +90,6 @@ if 'recommendations' in st.session_state:
         
         st.header("⭐ Step 5: High-Rated Selected Courses (4.0+)")
         if len(high_rated) > 0:
-            # ✅ NO BALLOONS - Just success message
             st.success(f"🎯 **{len(high_rated)} high-rated courses found!**")
             
             best = high_rated.iloc[0]
@@ -107,31 +103,5 @@ if 'recommendations' in st.session_state:
             st.warning("⚠️ No 4.0+ rated courses selected. Showing all:")
             st.dataframe(selected_df[['Course Name', 'Instructor', 'Rating', 'Pred Score']])
 
-# Sidebar
-with st.sidebar:
-    st.header("✅ IMPLEMENTED CHANGES")
-    st.markdown("""
-    **1. Slider after Step 1** ✅ (1-20 range)
-    **2. UNIQUE courses only** ✅ (drop_duplicates)
-    **3. MANUAL selection** ✅ (default=[])
-    **4. NO balloons on generate** ✅
-    **5. Ratings shown everywhere** ✅
-    """)
-    
-    st.header("📋 Instructions")
-    st.markdown("""
-    1. Enter **User ID**
-    2. **Slider (1-20)** → Below User ID
-    3. **Generate** → **UNIQUE** courses
-    4. **Manual select** → Empty dropdown
-    5. **High-rated** results
-    """)
-    
-    st.header("📁 Files")
-    st.markdown("✅ **full_data.pkl** only")
-    
-    st.header("⚙️ Run")
-    st.code("pip install streamlit pandas numpy\nstreamlit run app.py")
-
 st.markdown("---")
-st.caption("🎓 **ALL CHANGES IMPLEMENTED PERFECTLY**")
+st.caption("🎓 **Clean interface - No sidebar**")
