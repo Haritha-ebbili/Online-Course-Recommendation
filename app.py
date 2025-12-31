@@ -58,7 +58,6 @@ def hybrid_score(user_id, course_id):
     return 0.6 * cf_predict(user_id, course_id) + 0.4 * content_predict(course_id)
 
 def get_recommendations(user_id, n=20, max_price=500, min_rating=3.0):
-    """Get top 20 recommendations for user (starts from 1)"""
     user_courses = set(df[df[user_col] == user_id][course_col].unique())
     candidates = df[~df[course_col].isin(user_courses)].copy()
     
@@ -75,8 +74,6 @@ def get_recommendations(user_id, n=20, max_price=500, min_rating=3.0):
     return result
 
 def get_high_rating_courses(selected_course_id, n=10):
-    """Get high rating courses similar to selected course"""
-    # Get courses similar to selected course
     selected_info = df[df[course_col] == selected_course_id].iloc[0]
     selected_text = f"{selected_info[instructor_col]} {selected_info[name_col]}"
     
@@ -96,100 +93,80 @@ def get_high_rating_courses(selected_course_id, n=10):
     result.index += 1
     return result
 
-# === UI ===
+# === MAIN UI ===
 st.title("🎓 Online Course Recommendation System")
-st.markdown("---")
 
 # Sidebar
 st.sidebar.header("🔍 Controls")
-user_id = st.sidebar.number_input("👤 Enter User ID", 1, 49999, 15796)
+user_id = st.sidebar.number_input("👤 Enter User ID", 1, 49999, 15796, key="main_user_id")
 max_price = st.sidebar.slider("💰 Max Price ($)", 0, 500, 400)
 min_rating = st.sidebar.slider("⭐ Min Rating", 1.0, 5.0, 3.0)
 
-# Main tabs
-tab1, tab2, tab3 = st.tabs(["📋 Recommendations", "🎯 Select Course", "⭐ High Rating Courses"])
+# RECOMMENDATIONS SECTION - ALWAYS SHOWS COURSES
+st.subheader(f"🔥 Top Recommendations for User #{user_id}")
 
-with tab1:
-    st.subheader(f"🔥 Top Recommendations for User #{user_id}")
+# Get and display recommendations IMMEDIATELY
+recommendations = get_recommendations(user_id, 20, max_price, min_rating)
+
+if not recommendations.empty:
+    # Header
+    st.markdown("**# | course_id | score | course_name | instructor | rating | price**")
     
-    # Get recommendations (1-20)
-    recommendations = get_recommendations(user_id, 20, max_price, min_rating)
-    
-    if not recommendations.empty:
-        st.markdown("**# | course_id | score | course_name | instructor | rating | price**")
+    # Show ALL recommendations (1-20)
+    for idx, row in recommendations.iterrows():
+        course_name_short = (row['course_name'][:28] + "...") if len(row['course_name']) > 28 else row['course_name']
+        instructor_short = (row['instructor'][:12] + "...") if len(row['instructor']) > 12 else row['instructor']
         
-        for idx, row in recommendations.iterrows():
-            course_name_short = (row['course_name'][:25] + "...") if len(row['course_name']) > 25 else row['course_name']
+        st.markdown(f"""
+        **{idx}** | **{int(row['course_id'])}** | **{row['recommendation_score']:.3f}** | 
+        **{course_name_short}** | **{instructor_short}** | **{row['rating']:.1f}** | **${int(row['price'])}**
+        """)
+    
+    # Store for selection
+    st.session_state.recommendations = recommendations
+    
+    st.success(f"✅ Showing top {len(recommendations)} recommendations for User #{user_id}")
+else:
+    st.warning("No recommendations found! Try adjusting filters.")
+
+st.markdown("---")
+
+# Course Selection
+st.subheader("🎯 Select a Course from Recommendations")
+if 'recommendations' in st.session_state and not st.session_state.recommendations.empty:
+    course_options = []
+    for idx, row in st.session_state.recommendations.head(10).iterrows():  # Top 10 only
+        course_options.append(f"{int(idx)}. {row['course_name']} (ID: {int(row['course_id'])})")
+    
+    selected_course = st.selectbox("Choose course:", [""] + course_options, key="course_select")
+    
+    if selected_course and selected_course != "":
+        selected_idx = int(selected_course.split('.')[0])
+        selected_course_id = st.session_state.recommendations.iloc[selected_idx-1]['course_id']
+        st.session_state.selected_course_id = selected_course_id
+        
+        st.success(f"✅ Selected Course ID: **{int(selected_course_id)}**")
+else:
+    st.info("👆 Generate recommendations above first!")
+
+# High Rating Courses
+if 'selected_course_id' in st.session_state:
+    st.subheader("⭐ High Rating Courses (Similar to Selected)")
+    high_rating_courses = get_high_rating_courses(st.session_state.selected_course_id, 10)
+    
+    if not high_rating_courses.empty:
+        st.markdown("**# | course_id | course_name | instructor | rating | similarity**")
+        
+        for idx, row in high_rating_courses.iterrows():
+            course_name_short = (row['course_name'][:28] + "...") if len(row['course_name']) > 28 else row['course_name']
             instructor_short = (row['instructor'][:12] + "...") if len(row['instructor']) > 12 else row['instructor']
             
             st.markdown(f"""
-            **{idx}** | **{int(row['course_id'])}** | **{row['recommendation_score']:.3f}** | 
-            **{course_name_short}** | **{instructor_short}** | **{row['rating']:.1f}** | **${row['price']:.0f}**
+            **{idx}** | **{int(row['course_id'])}** | **{course_name_short}** | 
+            **{instructor_short}** | **{row['rating']:.1f}** | **{row['similarity']}**
             """)
-        
-        # Store recommendations in session state for selection
-        if 'recommendations' not in st.session_state:
-            st.session_state.recommendations = recommendations
     else:
-        st.warning("No recommendations found!")
-
-with tab2:
-    st.subheader("🎯 Select a Recommended Course")
-    
-    if 'recommendations' in st.session_state and not st.session_state.recommendations.empty:
-        # Create selectbox with course names
-        course_options = []
-        for idx, row in st.session_state.recommendations.iterrows():
-            course_options.append(f"{idx}. {row['course_name']} (ID: {int(row['course_id'])})")
-        
-        selected_course = st.selectbox("Choose a course:", course_options)
-        
-        if selected_course:
-            # Extract course_id from selection
-            selected_idx = int(selected_course.split('.')[0])
-            selected_course_id = st.session_state.recommendations.iloc[selected_idx-1]['course_id']
-            
-            st.success(f"✅ Selected: Course ID **{int(selected_course_id)}**")
-            
-            # Store selected course
-            if 'selected_course_id' not in st.session_state:
-                st.session_state.selected_course_id = selected_course_id
-            
-            st.info("Go to 'High Rating Courses' tab to see similar high-rated courses!")
-            
-            # Show course details
-            course_details = df[df[course_col] == selected_course_id].iloc[0]
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Rating", f"{course_details['rating']:.1f}")
-                st.metric("Price", f"${course_details[price_col]:.0f}")
-            with col2:
-                st.metric("Instructor", course_details[instructor_col])
-    else:
-        st.warning("Please generate recommendations first!")
-
-with tab3:
-    st.subheader("⭐ High Rating Courses (Similar to Selected)")
-    
-    if 'selected_course_id' in st.session_state:
-        selected_course_id = st.session_state.selected_course_id
-        high_rating_courses = get_high_rating_courses(selected_course_id, 10)
-        
-        if not high_rating_courses.empty:
-            st.markdown("**# | course_id | course_name | instructor | rating | similarity**")
-            
-            for idx, row in high_rating_courses.iterrows():
-                course_name_short = (row['course_name'][:25] + "...") if len(row['course_name']) > 25 else row['course_name']
-                instructor_short = (row['instructor'][:12] + "...") if len(row['instructor']) > 12 else row['instructor']
-                
-                st.markdown(f"""
-                **{idx}** | **{int(row['course_id'])}** | **{course_name_short}** | 
-                **{instructor_short}** | **{row['rating']:.1f}** | **{row['similarity']}**
-                """)
-        else:
-            st.warning("No high rating courses found!")
-    else:
-        st.info("👈 Select a course from 'Select Course' tab first!")
+        st.warning("No high rating similar courses found!")
 
 st.markdown("---")
-st.success("✅ Complete workflow: User ID → Recommendations (1-20) → Select Course → High Rating Courses!")
+st.caption("✅ Recommendations ALWAYS show for User ID input!")
