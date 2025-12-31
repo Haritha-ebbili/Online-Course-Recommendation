@@ -2,158 +2,131 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
-import os
+from sklearn.metrics.pairwise import cosine_similarity
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(page_title="Course Recommender", page_icon="🎓", layout="wide")
 
+# Custom CSS for table styling
 st.markdown("""
     <style>
-    .main {
-        background-color: #f5f7f9;
-    }
-    .stButton>button {
-        width: 100%;
-        border-radius: 5px;
-        height: 3em;
-        background-color: #ff4b4b;
-        color: white;
-    }
+    .main { background-color: #f5f7f9; }
+    .stTable { font-size: 14px; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🎓 Online Course Recommendation System")
-st.markdown("Discover the best courses tailored just for you based on our Hybrid Recommendation Engine.")
-
 # --- LOAD DATA AND MODELS ---
 @st.cache_resource
-def load_models():
+def load_all_assets():
     try:
-        # Load the original full dataset for metadata
         full_data = pd.read_pickle('full_data.pkl')
-        
-        # Load the standardized training data
         train_data = pd.read_pickle('train_data.pkl')
-        
-        # Load the biases (Global Mean, User Bias, Item Bias)
         with open('biases.pkl', 'rb') as f:
             biases = pickle.load(f)
-            
-        # Load TF-IDF (optional, but loaded as it was saved)
         with open('tfidf.pkl', 'rb') as f:
             tfidf = pickle.load(f)
-            
-        return full_data, train_data, biases, tfidf
-    except FileNotFoundError as e:
-        st.error(f"Missing model files: {e.filename}. Please run the training notebook first.")
+        
+        # Prepare content similarity matrix
+        # Using name + instructor as per training notebook logic
+        full_data['features'] = (
+            full_data['course_name'].astype(str) + ' ' + 
+            full_data['instructor'].astype(str)
+        )
+        tfidf_matrix = tfidf.transform(full_data['features'])
+        
+        return full_data, train_data, biases, tfidf_matrix
+    except Exception as e:
+        st.error(f"Error loading files: {e}")
         return None, None, None, None
 
-df, train, biases, tfidf = load_models()
+df, train, biases, tfidf_matrix = load_all_assets()
 
+# --- PREDICTION LOGIC ---
 if df is not None:
-    # Extract model parameters
     global_mean = biases['global_mean']
     user_bias = biases['user_bias']
     item_bias = biases['item_bias']
 
-    # --- RECOMMENDATION LOGIC ---
-    def cf_predict(user_id, course_id):
-        """Collaborative Filtering Prediction: Mean + User Bias + Item Bias"""
-        bu = user_bias.get(user_id, 0)
-        bi = item_bias.get(course_id, 0)
-        return global_mean + bu + bi
-
-    def content_predict(course_id):
-        """Content-Based Prediction: Average rating for the course in training data"""
-        ratings = train[train['courseid'] == course_id]['rating']
-        return ratings.mean() if not ratings.empty else global_mean
-
-    def hybrid_predict(user_id, course_id):
-        """Hybrid Prediction: 50% CF + 50% Content"""
-        return 0.5 * cf_predict(user_id, course_id) + 0.5 * content_predict(course_id)
-
-    def get_top_n(user_id, n=5):
-        """Finds top N courses the user hasn't seen yet"""
-        # Courses user has already interacted with
-        seen_courses = train[train['userid'] == user_id]['courseid'].unique()
-        
-        # All available courses in the system
+    def get_recommendations(user_id, n=5):
+        # Courses seen by user
+        seen = train[train['userid'] == user_id]['courseid'].tolist()
+        # All unique courses
         all_courses = train['courseid'].unique()
+        candidates = [c for c in all_courses if c not in seen]
         
-        # Candidates are courses not yet seen by the user
-        candidates = [c for c in all_courses if c not in seen_courses]
-        
-        if not candidates:
-            return []
-            
         scores = []
         for cid in candidates:
-            score = hybrid_predict(user_id, cid)
-            scores.append((cid, score))
+            # CF Part
+            bu = user_bias.get(user_id, 0)
+            bi = item_bias.get(cid, 0)
+            cf_score = global_mean + bu + bi
             
-        # Sort by prediction score descending
+            # Content Part (Mean rating of that course)
+            course_ratings = train[train['courseid'] == cid]['rating']
+            content_score = course_ratings.mean() if not course_ratings.empty else global_mean
+            
+            # Hybrid (50/50)
+            hybrid_score = 0.5 * cf_score + 0.5 * content_score
+            scores.append((cid, hybrid_score))
+            
         scores.sort(key=lambda x: x[1], reverse=True)
         return scores[:n]
 
-    # --- SIDEBAR ---
-    st.sidebar.header("User Selection")
-    user_list = sorted(train['userid'].unique())
-    selected_user = st.sidebar.selectbox("Select a User ID to get recommendations:", user_list)
-    num_recommendations = st.sidebar.slider("Number of recommendations:", 1, 10, 5)
-
-    # --- MAIN UI ---
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        st.subheader(f"Recommendations for User: {selected_user}")
-        if st.button("Generate Recommendations"):
-            with st.spinner('Calculating scores...'):
-                recommendations = get_top_n(selected_user, num_recommendations)
-            
-            if recommendations:
-                # Prepare a lookup table for display
-                # We use the original dataframe 'df' to get course titles and instructors
-                # Note: 'df' column names are from original Excel, 'train' names are standardized
-                course_lookup = df[['course_id', 'course_name', 'instructor', 'rating', 'difficulty_level', 'course_price']].drop_duplicates('course_id')
-                
-                for rank, (cid, score) in enumerate(recommendations, 1):
-                    details = course_lookup[course_lookup['course_id'] == cid].iloc[0]
-                    
-                    with st.expander(f"#{rank}: {details['course_name']}", expanded=True):
-                        c1, c2, c3 = st.columns([2, 1, 1])
-                        with c1:
-                            st.write(f"**Instructor:** {details['instructor']}")
-                            st.write(f"**Level:** {details['difficulty_level']}")
-                        with c2:
-                            st.write(f"**Price:** ${details['course_price']}")
-                            st.write(f"**Avg Rating:** {details['rating']} ⭐")
-                        with c3:
-                            st.metric("Match Score", f"{score:.2f}")
-            else:
-                st.info("This user has already seen all available courses.")
-
-    with col2:
-        st.subheader("User Activity")
-        user_history = train[train['userid'] == selected_user]
-        st.write(f"User has completed **{len(user_history)}** courses.")
+    # --- UI: USER RECOMMENDATIONS ---
+    st.title("🎓 Course Recommendation System")
+    
+    input_user = st.number_input("Enter User ID:", value=15796, step=1)
+    
+    if st.button("Get Recommendations"):
+        recs = get_recommendations(input_user)
         
-        # Merge with df to show names of courses already taken
-        history_names = user_history.merge(
-            df[['course_id', 'course_name']].drop_duplicates(), 
-            left_on='courseid', right_on='course_id'
-        )
-        st.dataframe(history_names[['course_name', 'rating']], use_container_width=True, hide_index=True)
+        if recs:
+            # Format results for display
+            rec_df = pd.DataFrame(recs, columns=['course_id', 'recommendation_score'])
+            
+            # Merge with metadata
+            lookup = df[['course_id', 'course_name', 'instructor', 'rating']].drop_duplicates('course_id')
+            final_recs = rec_df.merge(lookup, on='course_id', how='left')
+            
+            st.subheader(f"Top Recommendations for User {input_user}")
+            st.table(final_recs[['course_id', 'recommendation_score', 'course_name', 'instructor', 'rating']])
+            
+            # Store recommendations in session state for selection feature
+            st.session_state['current_recs'] = final_recs
+        else:
+            st.warning("No recommendations found for this user.")
 
-    # --- SEARCH FEATURE ---
-    st.divider()
-    st.subheader("🔍 Explore All Courses")
-    search_query = st.text_input("Search courses by name or instructor:")
-    if search_query:
-        search_results = df[
-            df['course_name'].str.contains(search_query, case=False, na=False) | 
-            df['instructor'].str.contains(search_query, case=False, na=False)
-        ].drop_duplicates('course_id')
-        st.dataframe(search_results[['course_name', 'instructor', 'rating', 'difficulty_level', 'course_price']], hide_index=True)
+    # --- UI: SIMILAR COURSE EXPLORER ---
+    if 'current_recs' in st.session_state:
+        st.divider()
+        st.subheader("🔍 Explore Further")
+        st.write("Select a course from your recommendations to find similar high-rated options:")
+        
+        course_options = st.session_state['current_recs']['course_name'].tolist()
+        selected_course_name = st.selectbox("Pick a course:", ["Select..."] + course_options)
+        
+        if selected_course_name != "Select...":
+            # Get index of selected course in the full dataframe
+            selected_idx = df[df['course_name'] == selected_course_name].index[0]
+            
+            # Compute Cosine Similarity for that course against all others
+            cosine_sim = cosine_similarity(tfidf_matrix[selected_idx], tfidf_matrix).flatten()
+            
+            # Add similarity and rank
+            sim_df = df.copy()
+            sim_df['similarity_score'] = cosine_sim
+            
+            # Filter: High Rating (> 4.0), not the same course, high similarity
+            # We sort by similarity AND rating
+            similar_courses = (
+                sim_df[sim_df['course_name'] != selected_course_name]
+                .sort_values(by=['similarity_score', 'rating'], ascending=False)
+                .drop_duplicates('course_name')
+                .head(5)
+            )
+            
+            st.write(f"**Because you liked '{selected_course_name}', you might also enjoy:**")
+            st.table(similar_courses[['course_name', 'instructor', 'rating', 'difficulty_level', 'course_price']])
 
 else:
-    st.warning("Please ensure the following files are in the directory: `full_data.pkl`, `train_data.pkl`, `biases.pkl`, `tfidf.pkl`.")
+    st.error("Model files not found. Ensure `full_data.pkl`, `train_data.pkl`, `biases.pkl`, and `tfidf.pkl` are in the app folder.")
