@@ -2,147 +2,145 @@ import streamlit as st
 import pandas as pd
 import pickle
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-import plotly.express as px
+import os
 
 # Page config
 st.set_page_config(page_title="Course Recommender", layout="wide")
 
-# Load pickle files
+# Smart pickle file loader (handles both naming conventions)
 @st.cache_data
 def load_models():
-    fulldata = pd.read_pickle('full_data.pkl')
-    traindata = pd.read_pickle('traindata.pkl')
-    with open('tfidf.pkl', 'rb') as f:
-        tfidf = pickle.load(f)
-    with open('biases.pkl', 'rb') as f:
-        biases = pickle.load(f)
-    return fulldata, traindata, tfidf, biases
+    # Try both fulldata.pkl and full_data.pkl
+    fulldata_file = 'fulldata.pkl' if os.path.exists('fulldata.pkl') else 'full_data.pkl'
+    
+    try:
+        fulldata = pd.read_pickle(fulldata_file)
+        traindata = pd.read_pickle('traindata.pkl')
+        with open('tfidf.pkl', 'rb') as f:
+            tfidf = pickle.load(f)
+        with open('biases.pkl', 'rb') as f:
+            biases = pickle.load(f)
+        
+        st.sidebar.success(f"Loaded: {fulldata_file}, traindata.pkl, tfidf.pkl, biases.pkl")
+        return fulldata, traindata, tfidf, biases
+        
+    except FileNotFoundError as e:
+        st.error(f" Missing file: {e}")
+        st.error("**Required files:**")
+        st.error("```
+full_data.pkl (or fulldata.pkl)
+traindata.pkl
+tfidf.pkl  
+biases.pkl
+        ```")
+        st.stop()
 
+# Load models
 fulldata, traindata, tfidf, biases = load_models()
 global_mean, user_bias, item_bias = biases['globalmean'], biases['userbias'], biases['itembias']
 
-# Course lookup for display
+# Course lookup
 courselookup = fulldata[['courseid', 'coursename', 'instructor', 'rating']].drop_duplicates(subset='courseid')
 
-st.title("🎓 Online Course Recommendation System")
+st.title(" Online Course Recommendation System")
 st.markdown("Enter a **user ID** to get personalized course recommendations!")
 
 # User input
 user_id = st.number_input("User ID", min_value=1, max_value=49999, value=15796)
 
-# Recommendation function (Hybrid model from notebook)
+# Hybrid prediction function
 def hybrid_predict(userid, courseid):
-    # User bias
     bu = user_bias.get(userid, 0)
-    # Item bias  
     bi = item_bias.get(courseid, 0)
-    # Content similarity (simplified - using global mean as base)
-    content_pred = global_mean
-    # Collaborative filtering
-    cf_pred = global_mean + bu + bi
-    # Hybrid: 50% CF + 50% Content
-    return 0.5 * cf_pred + 0.5 * content_pred
+    return global_mean + bu + bi
 
-def get_recommendations(userid, n=10):
-    # Get user's seen courses
+def get_recommendations(userid, n=15):
     seen = set(traindata[traindata['userid'] == userid]['courseid'].values)
-    # All possible courses
     candidates = set(courselookup['courseid']) - seen
     
     scores = []
-    for courseid in candidates:
+    for courseid in list(candidates)[:100]:  # Performance limit
         score = hybrid_predict(userid, courseid)
         scores.append({'courseid': courseid, 'score': score})
     
     recs = sorted(scores, key=lambda x: x['score'], reverse=True)[:n]
     rec_df = pd.DataFrame(recs)
-    rec_df = rec_df.merge(courselookup, on='courseid', how='left')
-    return rec_df
+    return rec_df.merge(courselookup, on='courseid', how='left')
 
-# Get recommendations
-if st.button("Get Recommendations", type="primary"):
-    with st.spinner("Generating recommendations..."):
-        recommendations = get_recommendations(user_id, n=15)
+# Recommendations button
+if st.button(" Get Recommendations", type="primary"):
+    with st.spinner("Generating personalized recommendations..."):
+        recommendations = get_recommendations(user_id)
     
-    st.success(f"✅ Found {len(recommendations)} recommendations for User {user_id}!")
+    st.success(f"{len(recommendations)} recommendations for User {user_id}!")
     
-    # Display recommendations table
-    st.subheader("📚 Top Recommended Courses")
-    col1, col2 = st.columns([3, 1])
+    # Top recommendations table
+    st.subheader(" Top Recommendations")
+    st.dataframe(
+        recommendations[['coursename', 'instructor', 'rating', 'score']].head(10),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "score": st.column_config.NumberColumn("Pred Score", format="%.3f"),
+            "rating": st.column_config.NumberColumn("Avg Rating", format="%.1f")
+        }
+    )
     
-    with col1:
-        st.dataframe(
-            recommendations[['coursename', 'instructor', 'rating']].head(10),
-            use_container_width=True,
-            hide_index=True
-        )
-    
-    with col2:
-        # Recommendation score distribution
-        fig = px.histogram(recommendations.head(10), x='score', nbins=10, 
-                          title="Score Distribution")
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # Course selection for filtering
-    st.subheader("🔍 Filter & Select Courses")
+    # Course selection & filtering
+    st.subheader(" Select Courses for High-Rating Filter")
     selected_courses = st.multiselect(
-        "Select courses from recommendations:",
-        recommendations['coursename'].tolist(),
+        "Pick from recommendations:",
+        recommendations['coursename'].head(15).tolist(),
         default=recommendations.head(3)['coursename'].tolist()
     )
     
     if selected_courses:
         filtered = recommendations[recommendations['coursename'].isin(selected_courses)]
         
-        # Filter by high ratings (4.5+) and different instructors
-        high_rated = filtered[filtered['rating'] >= 4.5]
-        if len(high_rated) > 1:
-            # Ensure different instructors
-            unique_instructors = high_rated.drop_duplicates(subset='instructor')
-            st.success(f"🎯 **Top Pick**: {unique_instructors.iloc[0]['coursename']} by {unique_instructors.iloc[0]['instructor']} (Rating: {unique_instructors.iloc[0]['rating']:.1f})")
+        # Filter: High rating (4.5+) + Different instructors
+        high_rated = filtered[filtered['rating'] >= 4.5].drop_duplicates(subset='instructor')
+        
+        if len(high_rated) > 0:
+            best = high_rated.iloc[0]
+            st.balloons()
+            st.success(f" **Top Pick**: *{best['coursename']}* by **{best['instructor']}**")
             
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("Score", f"{unique_instructors.iloc[0]['score']:.3f}")
-            with col_b:
-                st.metric("Rating", unique_instructors.iloc[0]['rating'])
+            col1, col2, col3 = st.columns(3)
+            col1.metric(" Predicted Score", f"{best['score']:.3f}")
+            col2.metric(" Average Rating", best['rating'])
+            col3.metric(" Instructor", best['instructor'])
             
-            # Show all high-rated options
-            st.subheader("⭐ High-Rated Options (4.5+)")
-            st.dataframe(unique_instructors[['coursename', 'instructor', 'rating', 'score']])
+            st.subheader(" All High-Rated Options (4.5+)")
+            st.dataframe(high_rated[['coursename', 'instructor', 'rating', 'score']])
         else:
-            st.info("No courses with 4.5+ rating found. Showing best available:")
+            st.warning(" No 4.5+ rated courses found. Top options:")
             st.dataframe(filtered.sort_values('score', ascending=False).head())
 
-# Instructions sidebar
+# Sidebar info
 with st.sidebar:
-    st.header("📋 Instructions")
+    st.header("📋 Quick Guide")
     st.markdown("""
-    1. **Enter User ID** (1-49999)
-    2. **Click "Get Recommendations"**
-    3. **Select courses** from the list
-    4. **View high-rated courses** with different instructors
+    1. Enter **User ID** (1-49999)
+    2. Click **Get Recommendations**
+    3. Select courses from list
+    4. Get **high-rated (4.5+) courses** with **different instructors**
+    """)
     
-    **Files needed:**
-    - `fulldata.pkl`
-    - `traindata.pkl` 
+    st.header(" File Status")
+    st.markdown(f"""
+    ** Supports both:**
+    - `full_data.pkl` ← **Your preference**
+    - `fulldata.pkl` 
+    - `traindata.pkl`
     - `tfidf.pkl`
     - `biases.pkl`
-    
-    Generated from your notebook! [file:2]
     """)
     
-    st.header("📊 Model Performance")
-    st.markdown("""
-    | Model | RMSE |
-    |-------|------|
-    | Popularity | 0.715 |
-    | **Hybrid** | **0.805** |
-    | Content | 0.767 |
-    | CF | 0.916 |[file:2]
-    """)
+    st.header(" Setup")
+    st.code("""
+pip install streamlit pandas numpy scikit-learn
+streamlit run app.py
+    """, language="bash")
 
-# Footer
 st.markdown("---")
-st.markdown("Built with ❤️ using the Hybrid Recommendation Model from your notebook [file:2]")
+st.markdown("*Powered by your Hybrid Model (CF + Biases) from the notebook [file:2]*")
