@@ -11,7 +11,7 @@ st.set_page_config(page_title="Course Recommender", layout="wide")
 # Load pickle files
 @st.cache_data
 def load_models():
-    fulldata = pd.read_pickle('fulldata.pkl')
+    fulldata = pd.read_pickle('full_data.pkl')
     traindata = pd.read_pickle('traindata.pkl')
     with open('tfidf.pkl', 'rb') as f:
         tfidf = pickle.load(f)
