@@ -1,14 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import os
 
 st.set_page_config(page_title="Course Recommender", layout="wide")
 
 @st.cache_data
 def load_data():
-    data = pd.read_pickle('full_data.pkl')
-    return data
+    return pd.read_pickle('full_data.pkl')
 
 df = load_data()
 
@@ -21,18 +19,11 @@ st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
 if st.button("Generate Recommendations"):
-    unique_courses = df.drop_duplicates(subset=df.columns[1])
+    unique_courses = df.drop_duplicates(subset='course_id')
     
-    numeric_cols = unique_courses.select_dtypes(include=[np.number]).columns
-    string_cols = unique_courses.select_dtypes(include=['object']).columns
-    
-    if len(numeric_cols) > 0:
-        unique_courses['rating'] = unique_courses[numeric_cols[0]]
-    else:
-        unique_courses['rating'] = np.random.uniform(3.0, 5.0, len(unique_courses))
-    
-    course_col = string_cols[0] if len(string_cols) > 0 else 'Course'
-    instructor_col = string_cols[1] if len(string_cols) > 1 else 'Instructor'
+    unique_courses['rating'] = unique_courses['rating']
+    course_col = 'course_name'
+    instructor_col = 'instructor'
     
     unique_courses['score'] = unique_courses['rating'] + np.random.normal(0, 0.1, len(unique_courses))
     recommendations = unique_courses.nlargest(num_recommendations, 'score')
