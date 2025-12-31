@@ -4,73 +4,81 @@ import numpy as np
 
 st.set_page_config(page_title="Course Recommender", layout="wide")
 
-# 🎨 PERFECT COURSE PLATFORM STYLING
+# 🖤 BLACK THEME - Course Recommendation System
 st.markdown("""
 <style>
-    /* Main Title */
+    /* Black Theme */
     .main-header {
         font-size: 3.5rem !important;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: #000000 !important;
         font-weight: 800 !important;
         text-align: center;
         margin-bottom: 2rem;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
     }
     
-    /* Blue Slider */
+    /* Black Background */
+    section[data-testid="stAppViewContainer"] {
+        background-color: #1a1a1a !important;
+        color: #ffffff !important;
+    }
+    
+    /* Black Slider */
     .stSlider > div > div > div > div {
-        background: linear-gradient(90deg, #1e88e5, #42a5f5) !important;
+        background: linear-gradient(90deg, #333333, #000000) !important;
     }
     
-    /* Custom Button - Teal/Education Blue */
+    /* Black Button */
     .stButton > button {
-        background: linear-gradient(45deg, #26c6da, #00acc1) !important;
-        color: white !important;
-        border: none !important;
+        background: linear-gradient(45deg, #000000, #333333) !important;
+        color: #ffffff !important;
+        border: 2px solid #666666 !important;
         border-radius: 50px !important;
         padding: 15px 40px !important;
         font-weight: 700 !important;
         font-size: 18px !important;
-        box-shadow: 0 8px 25px rgba(38, 198, 218, 0.4) !important;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.8) !important;
         transition: all 0.4s ease !important;
     }
     .stButton > button:hover {
-        transform: translateY(-3px) scale(1.05) !important;
-        box-shadow: 0 12px 35px rgba(38, 198, 218, 0.6) !important;
-        background: linear-gradient(45deg, #00bcd4, #0097a7) !important;
+        background: linear-gradient(45deg, #333333, #000000) !important;
+        box-shadow: 0 12px 35px rgba(0,0,0,1) !important;
+        border-color: #ffffff !important;
     }
     
-    /* Multiselect - Purple/Gold */
+    /* Black Multiselect */
     .stMultiSelect > div > div > div {
-        border: 3px solid #ab47bc !important;
+        border: 3px solid #444444 !important;
         border-radius: 15px !important;
-        background: linear-gradient(135deg, #f3e5f5, #e1bee7) !important;
+        background: #2a2a2a !important;
+        color: #ffffff !important;
     }
     
-    /* Dataframe styling */
+    /* Black Dataframe */
     .stDataFrame table {
         border-radius: 15px !important;
-        overflow: hidden !important;
+        background: #2a2a2a !important;
+        color: #ffffff !important;
     }
     .stDataFrame thead tr th {
-        background: linear-gradient(90deg, #42a5f5, #1e88e5) !important;
-        color: white !important;
+        background: linear-gradient(90deg, #000000, #333333) !important;
+        color: #ffffff !important;
         font-weight: 700 !important;
     }
-    
-    /* Metrics */
-    .stMetric > div {
-        background: linear-gradient(135deg, #ff7043, #ff5722) !important;
-        border-radius: 20px !important;
-        padding: 20px !important;
+    .stDataFrame tbody tr td {
+        background: #2a2a2a !important;
+        color: #ffffff !important;
+        border-color: #444444 !important;
     }
     
-    /* Headers */
+    /* Black Headers */
     .stMarkdown h2 {
-        color: #1e88e5 !important;
-        border-bottom: 3px solid #42a5f5 !important;
+        color: #ffffff !important;
+        border-bottom: 3px solid #333333 !important;
         padding-bottom: 10px !important;
+        background: #000000 !important;
+        padding: 15px !important;
+        border-radius: 10px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -81,16 +89,15 @@ def load_data():
 
 df = load_data()
 
-st.markdown('<h1 class="main-header">🎓 Course Recommendation System</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-header">Course Recommendation System</h1>', unsafe_allow_html=True)
 
 st.header("Step 1: Enter User ID")
 user_id = st.number_input("User ID", min_value=1, max_value=49999, value=15796)
 
 st.header("Step 2: Number of Recommendations")
-num_recommendations = st.slider("How many unique courses?", 1, 20, 10, key="blue_slider")
+num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
-if st.button("🚀 Generate Recommendations", key="generate"):
-    # ✅ UNIQUE COURSE NAMES ONLY
+if st.button("Generate Recommendations"):
     unique_courses = df.drop_duplicates(subset=['course_id', 'course_name'])
     
     unique_courses['score'] = unique_courses['rating'] + np.random.normal(0, 0.1, len(unique_courses))
@@ -104,14 +111,9 @@ if st.button("🚀 Generate Recommendations", key="generate"):
     st.dataframe(
         rec_display,
         use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Pred Score": st.column_config.NumberColumn(format="%.2f"),
-            "Rating": st.column_config.NumberColumn(format="%.2f")
-        }
+        hide_index=True
     )
     
-    # Store UNIQUE course names
     st.session_state.recommendations = rec_display
     st.session_state.course_options = rec_display['Course Name'].drop_duplicates().tolist()
 
@@ -128,21 +130,17 @@ if 'recommendations' in st.session_state:
             st.session_state.recommendations['Course Name'].isin(selected_courses)
         ]
         
-        # Step 5: DIRECT DATAFRAME (4.0-5.0) - NO PREVIOUS COLUMNS
+        # ✅ Step 5: 4.0-5.0 + DIFFERENT INSTRUCTORS
         high_rated = selected_df[
             (selected_df['Rating'] >= 4.0) & (selected_df['Rating'] <= 5.0)
-        ]
+        ].drop_duplicates(subset='Instructor')
         
-        st.header("Step 5: Selected Courses (4.0-5.0)")
+        st.header("Step 5: Selected Courses (4.0-5.0, Different Instructors)")
+        st.dataframe(high_rated[['Course Name', 'Instructor', 'Rating', 'Pred Score']])
+        
         if len(high_rated) > 0:
-            # DIRECT DATAFRAME - NO METRICS FIRST
-            st.dataframe(high_rated[['Course Name', 'Instructor', 'Rating', 'Pred Score']])
-            
-            # Metrics AFTER dataframe
             best = high_rated.iloc[0]
             col1, col2, col3 = st.columns(3)
-            col1.metric("🏆 Top Course", best['Course Name'][:40])
-            col2.metric("⭐ Rating", f"{best['Rating']:.2f}")
-            col3.metric("📈 Score", f"{best['Pred Score']:.2f}")
-        else:
-            st.dataframe(selected_df[['Course Name', 'Instructor', 'Rating', 'Pred Score']])
+            col1.metric("Top Course", best['Course Name'][:40])
+            col2.metric("Rating", f"{best['Rating']:.2f}")
+            col3.metric("Score", f"{best['Pred Score']:.2f}")
