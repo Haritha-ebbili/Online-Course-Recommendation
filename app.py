@@ -38,16 +38,16 @@ user_course_ratings = (
 def build_tfidf(courses):
     tfidf = TfidfVectorizer(stop_words="english")
     vectors = tfidf.fit_transform(courses["course_name"].fillna(""))
-    return vectors
+    return tfidf, vectors
 
-course_vectors = build_tfidf(courses)
+tfidf, course_vectors = build_tfidf(courses)
 
 course_id_to_index = {
     cid: idx for idx, cid in enumerate(courses["course_id"])
 }
 
 # ================= UI =================
-st.title(" Online Course Recommendation System")
+st.title("🎓 Online Course Recommendation System")
 
 user_id = st.text_input(
     "Enter User ID",
@@ -94,9 +94,8 @@ if st.button("Generate Recommendations"):
         if cid in course_id_to_index
     ]
 
-    # Safety check
     if not liked_indices:
-        st.info("Not enough user preference data. Showing popular courses.")
+        st.info("Not enough preference data. Showing popular courses.")
         popular = (
             courses.sort_values("rating", ascending=False)
                    .drop_duplicates("course_name")
@@ -106,13 +105,15 @@ if st.button("Generate Recommendations"):
         st.dataframe(popular, use_container_width=True)
         st.stop()
 
-    # FIX: Ensure user_profile is 2D
+    # 🔥 FINAL FIX (dense 2D array)
     user_profile = course_vectors[liked_indices].mean(axis=0)
-    user_profile = np.asarray(user_profile).reshape(1, -1)
+    user_profile = np.asarray(user_profile).astype(np.float64)
+    user_profile = user_profile.reshape(1, -1)
 
-    # ---------- COSINE SIMILARITY ----------
-    scores = cosine_similarity(course_vectors, user_profile).flatten()
-    courses["recommendation_score"] = scores
+    # 🔥 IMPORTANT: user_profile FIRST
+    similarity_scores = cosine_similarity(user_profile, course_vectors)[0]
+
+    courses["recommendation_score"] = similarity_scores
 
     # ---------- REMOVE SEEN COURSES ----------
     courses_filtered = courses[
