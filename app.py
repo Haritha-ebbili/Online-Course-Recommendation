@@ -35,12 +35,12 @@ user_course_ratings = (
 
 # ================= TF-IDF COURSE VECTORS =================
 @st.cache_resource
-def build_tfidf(courses):
+def build_tfidf(course_names):
     tfidf = TfidfVectorizer(stop_words="english")
-    vectors = tfidf.fit_transform(courses["course_name"].fillna(""))
-    return tfidf, vectors
+    vectors = tfidf.fit_transform(course_names.fillna(""))
+    return vectors
 
-tfidf, course_vectors = build_tfidf(courses)
+course_vectors = build_tfidf(courses["course_name"])
 
 course_id_to_index = {
     cid: idx for idx, cid in enumerate(courses["course_id"])
@@ -57,7 +57,7 @@ user_id = st.text_input(
 num_recs = st.slider(
     "Number of course recommendations",
     min_value=1,
-    max_value=20,
+    max_value=10,
     value=5,
     step=1
 )
@@ -81,10 +81,10 @@ if st.button("Generate Recommendations"):
                    .head(num_recs)
                    .reset_index(drop=True)
         )
-        st.dataframe(popular, use_container_width=True)
+        st.dataframe(popular, width="stretch")
         st.stop()
 
-    # ---------- BUILD USER PROFILE ----------
+    # ---------- BUILD USER PROFILE (FIXED) ----------
     user_mean = user_data["rating"].mean()
     liked_courses = user_data[user_data["rating"] >= user_mean]["course_id"]
 
@@ -102,17 +102,15 @@ if st.button("Generate Recommendations"):
                    .head(num_recs)
                    .reset_index(drop=True)
         )
-        st.dataframe(popular, use_container_width=True)
+        st.dataframe(popular, width="stretch")
         st.stop()
 
-    # 🔥 FINAL FIX (dense 2D array)
-    user_profile = course_vectors[liked_indices].mean(axis=0)
-    user_profile = np.asarray(user_profile).astype(np.float64)
-    user_profile = user_profile.reshape(1, -1)
+    # 🔥 CRITICAL FIX: convert to dense BEFORE mean
+    liked_vectors = course_vectors[liked_indices].toarray()
+    user_profile = np.mean(liked_vectors, axis=0).reshape(1, -1)
 
-    # 🔥 IMPORTANT: user_profile FIRST
+    # ---------- COSINE SIMILARITY ----------
     similarity_scores = cosine_similarity(user_profile, course_vectors)[0]
-
     courses["recommendation_score"] = similarity_scores
 
     # ---------- REMOVE SEEN COURSES ----------
@@ -140,6 +138,6 @@ if st.button("Generate Recommendations"):
                 "rating"
             ]
         ],
-        use_container_width=True,
+        width="stretch",
         height=300
     )
