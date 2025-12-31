@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Online Course Recommendation System", layout="wide")
@@ -51,14 +52,8 @@ course_id_to_index = {
 
 # ================= COLLABORATIVE FILTERING =================
 global_mean = df["rating"].mean()
-
-user_bias = (
-    df.groupby("user_id")["rating"].mean() - global_mean
-).to_dict()
-
-item_bias = (
-    df.groupby("course_id")["rating"].mean() - global_mean
-).to_dict()
+user_bias = (df.groupby("user_id")["rating"].mean() - global_mean).to_dict()
+item_bias = (df.groupby("course_id")["rating"].mean() - global_mean).to_dict()
 
 # ================= UI =================
 st.title("🎓 Online Course Recommendation System")
@@ -76,7 +71,7 @@ num_recs = st.slider(
     step=1
 )
 
-# ================= GENERATE RECOMMENDATIONS =================
+# ================= GENERATE PERSONALIZED RECOMMENDATIONS =================
 if st.button("Generate Recommendations"):
 
     if not user_id.strip():
@@ -87,59 +82,53 @@ if st.button("Generate Recommendations"):
     seen_courses = user_history.get(uid, set())
     u_bias = user_bias.get(uid, 0)
 
-    # ---------- STEP 1: BASE SCORE ----------
-    df_scores = df.copy()
-    df_scores["base_score"] = (
-        global_mean
-        + u_bias
-        + df_scores["course_id"].map(item_bias).fillna(0)
-    )
+    scores = []
 
-    # ---------- STEP 2: USER HISTORY BOOST ----------
-    if seen_courses:
-        seen_indices = [
-            course_id_to_index[cid]
-            for cid in seen_courses
-            if cid in course_id_to_index
-        ]
+    for _, row in courses.iterrows():
+        cid = row["course_id"]
 
-        if seen_indices:
-            similarity_boost = similarity_matrix[seen_indices].mean(axis=0)
-            df_scores["similarity_boost"] = df_scores["course_id"].map(
-                lambda cid: similarity_boost[course_id_to_index[cid]]
-                if cid in course_id_to_index else 0
-            )
+        if cid in seen_courses:
+            continue
+
+        # ---- similarity to user's own history ----
+        if seen_courses:
+            sim_vals = [
+                similarity_matrix[course_id_to_index[cid]][course_id_to_index[sc]]
+                for sc in seen_courses
+                if sc in course_id_to_index
+            ]
+            sim_score = np.mean(sim_vals) if sim_vals else 0
         else:
-            df_scores["similarity_boost"] = 0
-    else:
-        df_scores["similarity_boost"] = 0
+            sim_score = 0
 
-    # ---------- STEP 3: FINAL SCORE ----------
-    df_scores["recommendation_score"] = (
-        df_scores["base_score"] + 0.5 * df_scores["similarity_boost"]
-    )
+        final_score = (
+            global_mean
+            + u_bias
+            + item_bias.get(cid, 0)
+            + 0.7 * sim_score
+        )
 
-    # ---------- STEP 4: REMOVE SEEN COURSES ----------
-    df_scores = df_scores[~df_scores["course_id"].isin(seen_courses)]
-
-    # ---------- STEP 5: UNIQUE COURSE NAMES ----------
-    final_recs = (
-        df_scores
-        .groupby("course_name", as_index=False)
-        .agg({
-            "course_id": "first",
-            "recommendation_score": "max",
-            "instructor": "first",
-            "rating": "mean"
+        scores.append({
+            "course_id": cid,
+            "recommendation_score": final_score,
+            "course_name": row["course_name"],
+            "instructor": row["instructor"],
+            "rating": row["rating"]
         })
-        .sort_values("recommendation_score", ascending=False)
-        .head(num_recs)
-        .reset_index(drop=True)
+
+    rec_df = pd.DataFrame(scores)
+
+    # 🔥 ENSURE UNIQUE COURSE NAMES
+    rec_df = (
+        rec_df.sort_values("recommendation_score", ascending=False)
+              .drop_duplicates("course_name")
+              .head(num_recs)
+              .reset_index(drop=True)
     )
 
     st.subheader(f"Top Recommendations for User {uid}")
     st.dataframe(
-        final_recs[
+        rec_df[
             [
                 "course_id",
                 "recommendation_score",
