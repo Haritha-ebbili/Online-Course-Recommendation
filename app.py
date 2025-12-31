@@ -4,15 +4,14 @@ import pickle
 import os
 from sklearn.metrics.pairwise import cosine_similarity
 
-st.set_page_config(page_title="Course Recommender", layout="wide")
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="Course Advisor", layout="wide")
 
+# --- LOAD DATA ---
 @st.cache_resource
-def load_assets():
-    files = ['full_data.pkl', 'train_data.pkl', 'biases.pkl', 'tfidf.pkl']
-    if not all(os.path.exists(f) for f in files):
-        return None
-    
+def load_all_assets():
     try:
+        # Load deduplicated metadata and training files
         full_df = pd.read_pickle('full_data.pkl')
         train_df = pd.read_pickle('train_data.pkl')
         with open('biases.pkl', 'rb') as f:
@@ -20,75 +19,92 @@ def load_assets():
         with open('tfidf.pkl', 'rb') as f:
             tfidf = pickle.load(f)
             
-        # Remove duplicates from lookup to prevent duplicate display rows
-        lookup = full_df[['course_id', 'course_name', 'instructor', 'rating']].drop_duplicates(subset=['course_id'])
+        # Prepare similarity matrix for the "further selection" feature
+        tfidf_matrix = tfidf.transform(full_df['content'])
         
-        # Pre-process TF-IDF
-        full_df['features'] = full_df['course_name'].astype(str) + ' ' + full_df['instructor'].astype(str)
-        tfidf_matrix = tfidf.transform(full_df['features'])
-        
-        return full_df, train_df, biases, tfidf_matrix, lookup
-    except:
+        return full_df, train_df, biases, tfidf_matrix
+    except Exception as e:
+        st.error(f"Error loading files: {e}. Please ensure the files exist.")
         return None
 
-assets = load_assets()
+assets = load_all_assets()
 
 if assets:
-    df, train, biases, tfidf_matrix, lookup = assets
+    full_df, train_df, biases, tfidf_matrix = assets
+    
     st.title("🎓 Online Course Recommendation System")
     
-    user_id = st.number_input("Enter User ID:", value=15796)
-
+    # User ID Input
+    user_id = st.number_input("Enter User ID:", value=15796, step=1)
+    
     if st.button("Generate Recommendations"):
+        # 1. Prediction Logic (Hybrid 50/50)
         g_mean = biases['global_mean']
         u_b = biases['user_bias']
         i_b = biases['item_bias']
         
-        # Hybrid Scoring
-        seen = train[train['userid'] == user_id]['courseid'].tolist()
-        candidates = [c for c in train['courseid'].unique() if c not in seen]
+        # Get courses the user hasn't taken
+        seen = train_df[train_df['userid'] == user_id]['courseid'].unique()
+        all_courses = train_df['courseid'].unique()
+        candidates = [c for c in all_courses if c not in seen]
         
-        results = []
+        scores = []
         for cid in candidates:
-            cf_score = g_mean + u_b.get(user_id, 0) + i_b.get(cid, 0)
-            item_mean = train[train['courseid'] == cid]['rating'].mean()
-            # 50% Collaborative + 50% Content/Mean
-            score = 0.5 * cf_score + 0.5 * item_mean
-            results.append((cid, score))
+            # Collaborative Filtering Part
+            cf = g_mean + u_b.get(user_id, 0) + i_b.get(cid, 0)
+            # Item Mean Part
+            item_mean = train_df[train_df['courseid'] == cid]['rating'].mean()
+            # Hybrid Score
+            score = 0.5 * cf + 0.5 * item_mean
+            scores.append((cid, score))
+            
+        # Sort and take top 5
+        scores.sort(key=lambda x: x[1], reverse=True)
+        top_5 = pd.DataFrame(scores[:5], columns=['course_id', 'recommendation_score'])
         
-        results.sort(key=lambda x: x[1], reverse=True)
-        top_df = pd.DataFrame(results[:5], columns=['course_id', 'recommendation_score'])
+        # 2. Format the output table
+        # Merge with metadata (full_df is already deduplicated)
+        final_table = top_5.merge(full_df, left_on='course_id', right_on='course_id', how='left')
         
-        # Merge and format
-        final = top_df.merge(lookup, on='course_id', how='left')
-        final['recommendation_score'] = final['recommendation_score'].map('{:.6f}'.format)
+        # Exact Column Order and Formatting
+        final_table['recommendation_score'] = final_table['recommendation_score'].apply(lambda x: f"{x:.6f}")
         
         st.subheader(f"Top Recommendations for User {user_id}")
-        st.table(final[['course_id', 'recommendation_score', 'course_name', 'instructor', 'rating']])
-        st.session_state['recs'] = final
+        # Selecting specific columns for display
+        display_df = final_table[['course_id', 'recommendation_score', 'course_name', 'instructor', 'rating']]
+        st.table(display_df)
+        
+        # Save to session state for the selection feature
+        st.session_state['recommendations'] = final_table
 
-    # FEATURE: Select course for further recommendation
-    if 'recs' in st.session_state:
+    # --- FURTHER SELECTION FEATURE ---
+    if 'recommendations' in st.session_state:
         st.divider()
-        st.subheader("🎯 Best Similar Courses")
+        st.subheader("🎯 Refine Your Choice")
+        st.write("Select a recommended course to see similar high-rated options:")
         
-        # We use Instructor name in dropdown to distinguish duplicate course names
-        choice = st.selectbox("Select a course to find similar high-rated options:", 
-                              ["Select..."] + (st.session_state['recs']['course_name'] + " by " + st.session_state['recs']['instructor']).tolist())
+        options = st.session_state['recommendations']['course_name'].tolist()
+        selected_course = st.selectbox("Pick a course:", ["Select a course..."] + options)
         
-        if choice != "Select...":
-            # Extract just the course name from the selection
-            selected_course_name = choice.split(" by ")[0]
-            idx = df[df['course_name'] == selected_course_name].index[0]
+        if selected_course != "Select a course...":
+            # Find the ID and index of the selected course
+            sel_row = st.session_state['recommendations'][st.session_state['recommendations']['course_name'] == selected_course].iloc[0]
+            sel_id = sel_row['course_id']
             
-            sim_scores = cosine_similarity(tfidf_matrix[idx], tfidf_matrix).flatten()
-            temp_df = df.copy()
-            temp_df['sim'] = sim_scores
+            # Find index in full_df
+            idx = full_df[full_df['course_id'] == sel_id].index[0]
             
-            # Filter for High Rating and High Similarity
-            similar = temp_df[(temp_df['course_name'] != selected_course_name) & (temp_df['rating'] >= 4.0)]
-            similar = similar.sort_values(by=['sim', 'rating'], ascending=False).drop_duplicates('course_name').head(5)
+            # Compute similarity
+            cosine_sim = cosine_similarity(tfidf_matrix[idx], tfidf_matrix).flatten()
             
-            st.table(similar[['course_name', 'instructor', 'rating', 'course_price']])
-else:
-    st.error("System files missing. 1. Run your notebook cells. 2. Download the .pkl files. 3. Place them in the same folder as app.py.")
+            # Create a temp DF for similarity results
+            sim_df = full_df.copy()
+            sim_df['sim_score'] = cosine_sim
+            
+            # Filter for High Ratings (>= 4.0) and sort
+            discovery = sim_df[sim_df['course_id'] != sel_id]
+            discovery = discovery[discovery['rating'] >= 4.0]
+            discovery = discovery.sort_values(by=['sim_score', 'rating'], ascending=False).head(5)
+            
+            st.write(f"**Based on '{selected_course}', you might also like these top-rated courses:**")
+            st.table(discovery[['course_name', 'instructor', 'rating', 'course_price']])
