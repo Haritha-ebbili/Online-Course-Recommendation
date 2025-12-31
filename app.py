@@ -14,8 +14,6 @@ def load_assets():
         train_df = pd.read_pickle('train_data.pkl')
         with open('biases.pkl', 'rb') as f:
             biases = pickle.load(f)
-        
-        # We need the full dataframe to find other versions of the same course
         return full_df, train_df, biases
     except Exception as e:
         st.error(f"Error loading assets: {e}")
@@ -23,26 +21,33 @@ def load_assets():
 
 full_df, train_df, biases = load_assets()
 
+# --- DYNAMIC RESET LOGIC ---
+# This ensures that when the user ID changes, the old recommendations are deleted
+def reset_results():
+    if 'main_recs' in st.session_state:
+        del st.session_state['main_recs']
+
 # --- UI ---
 st.title("🎓 Online Course Recommendation System")
 
 if full_df is not None:
-    user_input = st.number_input("Enter User ID:", value=15796, step=1)
+    # We call reset_results whenever the number_input is interacted with
+    user_input = st.number_input("Enter User ID:", value=15796, step=1, on_change=reset_results)
 
     if st.button("Generate Recommendations"):
-        # 1. Recommendation Logic
+        # 1. Prediction Logic (Hybrid 50/50)
         g_mean = biases['global_mean']
         u_b = biases['user_bias']
         i_b = biases['item_bias']
         
-        # Get courses not yet taken
+        # Get courses not yet taken by this specific user
         seen = train_df[train_df['userid'] == user_input]['courseid'].unique()
         all_c = train_df['courseid'].unique()
         candidates = [c for c in all_c if c not in seen]
         
         results = []
         for cid in candidates:
-            # Hybrid Score Calculation
+            # Hybrid Score calculation
             cf_score = g_mean + u_b.get(user_input, 0) + i_b.get(cid, 0)
             item_mean = train_df[train_df['courseid'] == cid]['rating'].mean()
             score = 0.5 * cf_score + 0.5 * item_mean
@@ -52,48 +57,50 @@ if full_df is not None:
         results.sort(key=lambda x: x[1], reverse=True)
         top_5 = pd.DataFrame(results[:5], columns=['course_id', 'recommendation_score'])
         
-        # Merge with metadata (using full_df to get names and instructors)
-        # We drop duplicates on course_id to ensure a 1:1 merge
+        # Merge with metadata (deduplicated by ID for the table)
         lookup = full_df[['course_id', 'course_name', 'instructor', 'rating']].drop_duplicates('course_id')
         final_recs = top_5.merge(lookup, on='course_id', how='left')
         
-        # Format the score to 6 decimal places as requested
+        # Format the score to 6 decimal places (Exact requirement for 15796)
         final_recs['recommendation_score'] = final_recs['recommendation_score'].map('{:.6f}'.format)
         
-        # Display the Exact Table Format
         st.subheader(f"Top Recommendations for User {user_input}")
+        # Display table with specific columns
         st.table(final_recs[['course_id', 'recommendation_score', 'course_name', 'instructor', 'rating']])
         
-        # Store in session state for the next feature
-        st.session_state['recs_table'] = final_recs
+        # Store these specific results in session state
+        st.session_state['main_recs'] = final_recs
 
-    # --- NEW: SEARCH FOR HIGHER RATED VERSIONS OF THE SAME COURSE ---
-    if 'recs_table' in st.session_state:
+    # --- THE "SAME COURSE, DIFFERENT VERSION" FEATURE ---
+    if 'main_recs' in st.session_state:
         st.divider()
-        st.subheader("🎯 Find Better Versions of These Courses")
+        st.subheader("🎯 Refine Your Choice: Same Course, Different Versions")
+        st.write("Find the same course with a different instructor and rating:")
         
-        selected_name = st.selectbox(
-            "Select a course to see other instructors with higher ratings:",
-            ["Select..."] + st.session_state['recs_table']['course_name'].tolist()
+        # Use a key based on user_id so this dropdown also resets
+        selected_course_name = st.selectbox(
+            "Select a course from your recommendations:",
+            ["Select a course..."] + st.session_state['main_recs']['course_name'].tolist(),
+            key=f"select_{user_input}" 
         )
         
-        if selected_name != "Select...":
-            # Find the rating of the course currently in the recommendation list
-            current_rating = st.session_state['recs_table'][
-                st.session_state['recs_table']['course_name'] == selected_name
-            ]['rating'].iloc[0]
-            
-            # Search the entire dataset for the SAME course name but HIGHER rating
-            better_versions = full_df[
-                (full_df['course_name'] == selected_name) & 
-                (full_df['rating'] > current_rating)
-            ].sort_values(by='rating', ascending=False).drop_duplicates('instructor')
-            
-            if not better_versions.empty:
-                st.success(f"Found {len(better_versions)} versions of **{selected_name}** with higher ratings!")
-                st.table(better_versions[['course_id', 'course_name', 'instructor', 'rating', 'course_price']])
+        if selected_course_name != "Select a course...":
+            # Identify the version currently shown in the table
+            current_id = st.session_state['main_recs'][
+                st.session_state['main_recs']['course_name'] == selected_course_name
+            ]['course_id'].iloc[0]
+
+            # Search full_df for same name, but DIFFERENT instructor/ID
+            alternatives = full_df[
+                (full_df['course_name'] == selected_course_name) & 
+                (full_df['course_id'] != current_id)
+            ].sort_values(by='rating', ascending=False)
+
+            if not alternatives.empty:
+                st.write(f"Other available instructors for **{selected_course_name}**:")
+                st.table(alternatives[['course_id', 'course_name', 'instructor', 'rating', 'course_price']].reset_index(drop=True))
             else:
-                st.info(f"The recommended version of **{selected_name}** is already among the highest rated available.")
+                st.info(f"No other versions of **{selected_course_name}** were found.")
 
 else:
-    st.error("Please ensure your .pkl files are in the directory.")
+    st.error("Assets not found. Please ensure your .pkl files are in the directory.")
