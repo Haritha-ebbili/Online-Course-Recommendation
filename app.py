@@ -2,10 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # ================= PAGE CONFIG =================
-st.set_page_config(
-    page_title="Online Course Recommendation System",
-    layout="wide"
-)
+st.set_page_config(page_title="Online Course Recommendation System", layout="wide")
 
 # ================= LOAD DATA =================
 @st.cache_resource
@@ -15,16 +12,6 @@ def load_data():
     return df
 
 df = load_data()
-
-# ================= COURSE MASTER =================
-courses = (
-    df.groupby("course_id", as_index=False)
-      .agg({
-          "course_name": "first",
-          "instructor": "first",
-          "rating": "mean"
-      })
-)
 
 # ================= COLLABORATIVE FILTERING =================
 global_mean = df["rating"].mean()
@@ -59,7 +46,7 @@ num_recs = st.slider(
     step=1
 )
 
-# ================= GENERATE UNIQUE TOP-N =================
+# ================= GENERATE RECOMMENDATIONS =================
 if st.button("Generate Recommendations"):
 
     if not user_id.strip():
@@ -70,24 +57,32 @@ if st.button("Generate Recommendations"):
     seen = user_history.get(uid, set())
     u_bias = user_bias.get(uid, 0)
 
-    recs = courses[~courses["course_id"].isin(seen)].copy()
-
-    # ✅ MODEL BUILDING SCORE
-    recs["recommendation_score"] = recs["course_id"].apply(
-        lambda cid: global_mean + u_bias + item_bias.get(cid, 0)
+    # Step 1: score at course_id level
+    df_scores = df[~df["course_id"].isin(seen)].copy()
+    df_scores["recommendation_score"] = (
+        global_mean
+        + u_bias
+        + df_scores["course_id"].map(item_bias)
     )
 
-    # ✅ CRITICAL FIX: UNIQUE COURSE NAMES
-    top_recs = (
-        recs.sort_values("recommendation_score", ascending=False)
-            .drop_duplicates(subset="course_name")  # 🔥 FIX
-            .head(num_recs)
-            .reset_index(drop=True)
+    # Step 2: AGGREGATE AT COURSE NAME LEVEL (🔥 KEY FIX)
+    final_recs = (
+        df_scores
+        .groupby("course_name", as_index=False)
+        .agg({
+            "course_id": "first",
+            "recommendation_score": "max",
+            "instructor": "first",
+            "rating": "mean"
+        })
+        .sort_values("recommendation_score", ascending=False)
+        .head(num_recs)
+        .reset_index(drop=True)
     )
 
     st.subheader(f"Top Recommendations for User {uid}")
     st.dataframe(
-        top_recs[
+        final_recs[
             [
                 "course_id",
                 "recommendation_score",
