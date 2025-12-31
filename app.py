@@ -15,12 +15,15 @@ st.set_page_config(page_title="Hybrid Course Recommender", layout="wide")
 # ---------------- LOAD FILES ----------------
 @st.cache_resource
 def load_assets():
-    courses = pickle.load(open("courses.pkl", "rb"))
-    similarity = pickle.load(open("similarity.pkl", "rb"))
-    logic = pickle.load(open("model_logic.pkl", "rb"))
-    return courses, similarity, logic
+    try:
+        courses = pickle.load(open("courses.pkl", "rb"))
+        similarity = pickle.load(open("similarity.pkl", "rb"))
+        logic = pickle.load(open("model_logic.pkl", "rb"))
+        return courses, similarity, logic
+    except FileNotFoundError as e:
+        st.error(f"Required file missing: {e}")
+        st.stop()
 
-courses, similarity, logic = load_assets()
 
 # ---------------- UI ----------------
 st.title("🎓 Hybrid Course Recommendation System")
