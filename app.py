@@ -9,20 +9,19 @@ from sklearn.metrics.pairwise import cosine_similarity
 st.set_page_config(page_title="Hybrid Course Recommender", layout="wide")
 
 # ---------------- SAFE LOAD ASSETS ----------------
+# ---------------- SAFE LOAD ----------------
 @st.cache_resource
 def load_assets():
-    try:
-        courses = pickle.load(open("courses.pkl", "rb"))
-        logic = pickle.load(open("model_logic.pkl", "rb"))
-        return courses.reset_index(drop=True), logic
-    except FileNotFoundError as e:
-        st.error(f"Missing required file: {e}")
-        st.stop()
-    except Exception as e:
-        st.error(f"Error loading model files: {e}")
-        st.stop()
+    courses = pickle.load(open("courses.pkl", "rb"))
+    logic = pickle.load(open("model_logic.pkl", "rb"))
+    return courses.reset_index(drop=True), logic
 
-courses, logic = load_assets()
+try:
+    courses, logic = load_assets()
+except Exception as e:
+    st.error(f"Failed to load model files: {e}")
+    st.stop()
+
 
 # ---------------- COMPUTE SIMILARITY (NO PKL FILE) ----------------
 @st.cache_resource
