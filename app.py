@@ -10,13 +10,13 @@ st.set_page_config(page_title="Course Recommender", layout="wide")
 def load_all_four_files():
     """Load all 4 pickle files - ONLY uses full_data.pkl"""
     
-    # REQUIRED: full_data.pkl only (no fulldata.pkl)
+    # REQUIRED: full_data.pkl only
     fulldata_file = 'full_data.pkl'
     traindata_file = 'traindata.pkl'
     tfidf_file = 'tfidf.pkl'
     biases_file = 'biases.pkl'
     
-    # Load fulldata
+    # Load fulldata (REQUIRED)
     if not os.path.exists(fulldata_file):
         st.error(f"❌ **{fulldata_file} REQUIRED**")
         st.stop()
@@ -153,15 +153,15 @@ if st.button("🚀 Generate Recommendations", type="primary"):
             st.warning("⚠️ No 4.5+ rated courses. Showing best matches:")
             st.dataframe(filtered.sort_values('score', ascending=False)[['coursename', 'instructor', 'rating', 'score']])
 
-# Sidebar with file status
+# Sidebar with file status - FIXED SYNTAX
 with st.sidebar:
     st.header("📁 REQUIRED FILES")
-    st.markdown("```
+    st.markdown("""
 ✅ full_data.pkl     ← REQUIRED
 ✅ traindata.pkl     ← Optional  
 ✅ tfidf.pkl         ← Optional
 ✅ biases.pkl        ← Optional
-    ```")
+    """)
     
     st.header("⚙️ Setup")
     st.code("""
@@ -176,4 +176,4 @@ streamlit run app.py
         st.info("📊 Using rating-based fallback")
 
 st.markdown("---")
-st.caption("🎓 **Uses ONLY full_data.pkl as primary source** [file:2]")
+st.caption("🎓 **Uses ONLY full_data.pkl as primary source**")
