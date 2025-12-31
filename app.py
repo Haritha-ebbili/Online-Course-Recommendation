@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import pickle
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -33,14 +32,14 @@ def build_courses(df):
 
 courses = build_courses(df)
 
-# ================= USER HISTORY (REBUILT) =================
+# ================= USER HISTORY =================
 @st.cache_resource
 def build_user_history(df):
     return df.groupby("user_id")["course_id"].apply(set).to_dict()
 
 user_history = build_user_history(df)
 
-# ================= CONTENT SIMILARITY (REBUILT) =================
+# ================= CONTENT SIMILARITY =================
 @st.cache_resource
 def build_similarity(courses):
     tfidf = TfidfVectorizer(stop_words="english")
@@ -55,15 +54,17 @@ course_id_to_index = {
 
 # ================= COLLABORATIVE FILTERING =================
 global_mean = df["rating"].mean()
-
 user_bias = (df.groupby("user_id")["rating"].mean() - global_mean).to_dict()
 item_bias = (df.groupby("course_id")["rating"].mean() - global_mean).to_dict()
 
 # ================= UI =================
 st.title("🎓 Online Course Recommendation System")
-st.caption("Cloud-Safe Deployment | No Large Pickles")
+st.caption("Model Output + Highest-Rated Similar Course Recommendations")
 
-user_id = st.text_input("Enter User ID", value="15796")
+user_id = st.text_input(
+    "Enter User ID",
+    placeholder="Enter a valid User ID (e.g., 15796)"
+)
 
 num_recs = st.slider(
     "Number of course recommendations",
@@ -73,8 +74,12 @@ num_recs = st.slider(
     step=1
 )
 
-# ================= TOP-N RECOMMENDATION =================
+# ================= GENERATE TOP-N =================
 if st.button("Generate Recommendations"):
+
+    if not user_id.strip():
+        st.warning("⚠️ Please enter a User ID")
+        st.stop()
 
     uid = int(user_id) if user_id.isdigit() else user_id
     seen = user_history.get(uid, set())
@@ -82,6 +87,7 @@ if st.button("Generate Recommendations"):
 
     recs = courses[~courses["course_id"].isin(seen)].copy()
 
+    # 🔹 MODEL BUILDING SCORE (EXACT)
     recs["recommendation_score"] = recs["course_id"].apply(
         lambda cid: global_mean + u_bias + item_bias.get(cid, 0)
     )
@@ -91,6 +97,9 @@ if st.button("Generate Recommendations"):
             .head(num_recs)
             .reset_index(drop=True)
     )
+
+    st.session_state["top_recs"] = top_recs
+    st.session_state["shown_courses"] = set(top_recs["course_id"])
 
     st.subheader(f"Top Recommendations for User {uid}")
     st.dataframe(
@@ -106,3 +115,52 @@ if st.button("Generate Recommendations"):
         use_container_width=True,
         height=300
     )
+
+# ================= SIMILAR COURSES =================
+if "top_recs" in st.session_state:
+
+    selected_course = st.selectbox(
+        "Select a course to get highest-rated similar courses",
+        st.session_state["top_recs"]["course_name"]
+    )
+
+    if st.button("Recommend Highest-Rated Similar Courses"):
+
+        selected_row = courses[courses["course_name"] == selected_course].iloc[0]
+        selected_idx = course_id_to_index[selected_row["course_id"]]
+
+        similarity_scores = list(enumerate(similarity_matrix[selected_idx]))
+        similarity_scores.sort(key=lambda x: x[1], reverse=True)
+
+        SIM_THRESHOLD = 0.30
+        final_courses = []
+
+        for idx, sim_score in similarity_scores:
+            cid = courses.iloc[idx]["course_id"]
+
+            if idx == selected_idx:
+                continue
+
+            if cid in st.session_state["shown_courses"]:
+                continue
+
+            if sim_score < SIM_THRESHOLD:
+                break
+
+            final_courses.append({
+                "course_id": cid,
+                "course_name": courses.iloc[idx]["course_name"],
+                "instructor": courses.iloc[idx]["instructor"],
+                "rating": courses.iloc[idx]["rating"],
+                "similarity_score": round(sim_score, 3)
+            })
+
+            if len(final_courses) == num_recs:
+                break
+
+        st.subheader("⭐ Highest-Rated Similar Courses")
+        st.dataframe(
+            pd.DataFrame(final_courses),
+            use_container_width=True,
+            height=300
+        )
