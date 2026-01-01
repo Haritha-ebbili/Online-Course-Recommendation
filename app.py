@@ -3,9 +3,12 @@ import pandas as pd
 import numpy as np
 
 st.set_page_config(page_title="Course Recommender", layout="wide")
-
 st.markdown("""
 <style>
+    /* FULL PAGE BACKGROUND COLOR */
+    .stApp {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%) !important;
+    }
     section[data-testid="stAppViewContainer"] {
         background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%) !important;
     }
