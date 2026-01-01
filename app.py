@@ -24,11 +24,12 @@ st.markdown("""
     margin-bottom: 2rem !important;
     }
 
-    .stSlider > div > div > div > div {
-    background: linear-gradient(90deg, #7b1fa2, #ec407a) !important;
+   .stSlider > div > div > div > div {
+    background-color: #7b1fa2 !important;
     height: 10px !important;
     border-radius: 12px !important;
     }
+
 
     .stButton > button {
     background: linear-gradient(45deg, #1e3c72, #7b1fa2) !important;
