@@ -1,15 +1,15 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
 # ================= PAGE CONFIG =================
-st.set_page_config(page_title="Course Recommender", layout="wide")
+st.set_page_config(page_title="Pro Course Recommender", layout="wide")
 
 # ================= CUSTOM CSS =================
 st.markdown("""
 <style>
 .stApp { background-color: #D5CABD !important; }
-
 .main-header {
     font-size: 3.5rem !important;
     background: linear-gradient(90deg, #6a1b9a, #ec407a) !important;
@@ -19,13 +19,6 @@ st.markdown("""
     text-align: center !important;
     margin-bottom: 2rem !important;
 }
-
-.stSlider > div > div > div > div {
-    background-color: #7b1fa2 !important;
-    height: 10px !important;
-    border-radius: 12px !important;
-}
-
 .stButton > button {
     background: linear-gradient(45deg, #1e3c72, #7b1fa2) !important;
     color: white !important;
@@ -33,97 +26,88 @@ st.markdown("""
     padding: 15px 40px !important;
     font-weight: 700 !important;
 }
-
-.stButton > button:hover {
-    background: #3596B5 !important;
-    transform: translateY(-3px) scale(1.02) !important;
-}
 </style>
 """, unsafe_allow_html=True)
 
-# ================= LOAD DATA =================
+# ================= DATA ENGINE =================
 @st.cache_data
 def load_data():
-    return pd.read_pickle("full_data.pkl")
+    # Loading your specific dataset
+    df = pd.read_pickle("full_data.pkl")
+    return df
 
 df = load_data()
 
-# ================= TITLE =================
+def get_recommendations(target_user_id, n_recs):
+    # 1. Create User-Item Matrix (Rows=Users, Cols=Courses, Values=Ratings)
+    # We use pivot_table to handle potential duplicate user-course entries
+    user_item_matrix = df.pivot_table(index='user_id', columns='course_name', values='rating').fillna(0)
+    
+    if target_user_id not in user_item_matrix.index:
+        return pd.DataFrame(), []
+
+    # 2. Calculate Cosine Similarity between the target user and all others
+    user_sim = cosine_similarity(user_item_matrix)
+    user_sim_df = pd.DataFrame(user_sim, index=user_item_matrix.index, columns=user_item_matrix.index)
+    
+    # 3. Get Top 5 similar users
+    similar_users = user_sim_df[target_user_id].sort_values(ascending=False)[1:6].index
+    
+    # 4. Get courses taken by similar users but NOT by the target user
+    target_user_courses = df[df['user_id'] == target_user_id]['course_name'].unique()
+    
+    # Filter data for similar users and exclude target user's courses
+    candidate_df = df[df['user_id'].isin(similar_users) & ~df['course_name'].isin(target_user_courses)]
+    
+    # 5. Aggregate and ensure UNIQUE course names
+    # We group by course_name to get a single entry per course
+    rec_result = candidate_df.groupby('course_name').agg({
+        'course_id': 'first',
+        'instructor': 'first',
+        'rating': 'mean'
+    }).reset_index()
+    
+    # Sort by rating and limit
+    rec_result = rec_result.sort_values(by='rating', ascending=False).head(n_recs)
+    rec_result['recommendation_score'] = rec_result['rating']
+    
+    return rec_result, target_user_courses
+
+# ================= UI LAYOUT =================
 st.markdown('<h1 class="main-header">Course Recommendation System</h1>', unsafe_allow_html=True)
 
-# ================= STEP 1 =================
-st.header("Step 1: Enter User ID")
-user_id = st.number_input("User ID", min_value=1, value=15796)
+col1, col2 = st.columns(2)
+with col1:
+    st.header("Step 1: User Profile")
+    user_id = st.number_input("Enter User ID", min_value=1, value=15796)
+with col2:
+    st.header("Step 2: Preference")
+    num_recommendations = st.slider("Number of unique courses?", 1, 20, 10)
 
-# ================= STEP 2 =================
-st.header("Step 2: Number of Recommendations")
-num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
+# ================= EXECUTION =================
+if st.button("Generate Personalised Recommendations"):
+    recommendations, history = get_recommendations(user_id, num_recommendations)
+    
+    if not recommendations.empty:
+        st.session_state.recommendations = recommendations
+        st.session_state.course_options = recommendations["course_name"].tolist()
+        st.success(f"Found {len(recommendations)} new courses based on similar learners!")
+    else:
+        st.error("User ID not found or no similar profiles available.")
 
-# ================= STEP 3 EXECUTION (USER-BASED) =================
-if st.button("Generate Recommendations"):
-
-    # Courses already taken by this user
-    user_courses = df[df["user_id"] == user_id]["course_name"].unique()
-
-    # Remove already taken courses
-    candidate_courses = df[~df["course_name"].isin(user_courses)]
-
-    # Unique course names only
-    unique_courses = candidate_courses.drop_duplicates(subset="course_name")
-
-    # Popularity-based recommendation score
-    unique_courses["recommendation_score"] = (
-        unique_courses["rating"] + np.random.normal(0, 0.05, len(unique_courses))
-    )
-
-    recommendations = unique_courses.nlargest(
-        num_recommendations, "recommendation_score"
-    )
-
-    rec_display = recommendations[
-        ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
-    ].round(2)
-
-    st.session_state.recommendations = rec_display
-    st.session_state.course_options = rec_display["course_name"].tolist()
-
-# ================= STEP 3 DISPLAY =================
+# ================= DISPLAY =================
 if "recommendations" in st.session_state:
-    st.header("Step 3: Recommended Courses (User-Specific)")
+    st.header("Step 3: Recommended for You")
     st.dataframe(
-        st.session_state.recommendations,
+        st.session_state.recommendations[["course_id", "course_name", "instructor", "rating"]].round(2),
         use_container_width=True,
         hide_index=True
     )
 
-# ================= STEP 4 =================
-if "recommendations" in st.session_state:
-    st.header("Step 4: Select Courses")
-    selected_courses = st.multiselect(
-        "Choose courses:",
-        st.session_state.course_options
-    )
+    st.header("Step 4: Select to Enroll")
+    selected_courses = st.multiselect("Choose courses:", st.session_state.course_options)
 
-    # ================= STEP 5 =================
     if selected_courses:
-        step5_result = df[
-            (df["course_name"].isin(selected_courses)) &
-            (df["rating"] >= 4) &
-            (df["rating"] <= 5)
-        ][["course_id", "course_name", "instructor", "rating"]].drop_duplicates()
-
-        step5_result["recommendation_score"] = step5_result["rating"]
-
-        step5_result = step5_result[
-            ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
-        ].sort_values(
-            by=["course_name", "recommendation_score"],
-            ascending=[True, False]
-        )
-
-        st.header("Step 5: Selected Courses (High Rated)")
-        st.dataframe(
-            step5_result.round(2),
-            use_container_width=True,
-            hide_index=True
-        )
+        st.header("Step 5: Final Selection Details")
+        final_df = st.session_state.recommendations[st.session_state.recommendations["course_name"].isin(selected_courses)]
+        st.table(final_df[["course_name", "instructor", "rating"]])
