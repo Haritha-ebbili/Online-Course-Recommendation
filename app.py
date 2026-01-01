@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-#  PAGE CONFIG 
+# ================= PAGE CONFIG =================
 st.set_page_config(page_title="Course Recommender", layout="wide")
 
-#  CUSTOM CSS 
+# ================= CUSTOM CSS =================
 st.markdown("""
 <style>
 
@@ -72,25 +72,25 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-#  LOAD DATA
+# ================= LOAD DATA =================
 @st.cache_data
 def load_data():
     return pd.read_pickle("full_data.pkl")
 
 df = load_data()
 
-#  TITLE 
+# ================= TITLE =================
 st.markdown('<h1 class="main-header">Course Recommendation System</h1>', unsafe_allow_html=True)
 
-#  STEP 1 
+# ================= STEP 1 =================
 st.header("Step 1: Enter User ID")
 user_id = st.number_input("User ID", min_value=1, max_value=49999, value=15796)
 
-#  STEP 2 
+# ================= STEP 2 =================
 st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
-#  STEP 3 EXECUTION 
+# ================= STEP 3 EXECUTION =================
 if st.button("Generate Recommendations"):
     unique_courses = df.drop_duplicates(subset="course_name")
 
@@ -101,16 +101,18 @@ if st.button("Generate Recommendations"):
     recommendations = unique_courses.nlargest(num_recommendations, "score")
 
     rec_display = recommendations[
-        ["course_name", "instructor", "rating", "score"]
+        ["course_name", "instructor", "rating", "price", "score"]
     ].round(2)
 
-    rec_display.columns = ["Course Name", "Instructor", "Rating", "Pred Score"]
+    rec_display.columns = [
+        "Course Name", "Instructor", "Rating", "Price", "Pred Score"
+    ]
 
     # Store in session state
     st.session_state.recommendations = rec_display
     st.session_state.course_options = rec_display["Course Name"].tolist()
 
-#  STEP 3 DISPLAY (ALWAYS VISIBLE) 
+# ================= STEP 3 DISPLAY =================
 if "recommendations" in st.session_state:
     st.header("Step 3: Recommended Courses")
 
@@ -120,7 +122,7 @@ if "recommendations" in st.session_state:
         hide_index=True
     )
 
-#  STEP 4 
+# ================= STEP 4 =================
 if "recommendations" in st.session_state:
     st.header("Step 4: Select Courses")
     selected_courses = st.multiselect(
@@ -128,13 +130,13 @@ if "recommendations" in st.session_state:
         st.session_state.course_options
     )
 
-    #  STEP 5 
+    # ================= STEP 5 =================
     if selected_courses:
         step5_result = df[
             (df["course_name"].isin(selected_courses)) &
             (df["rating"] >= 4) &
             (df["rating"] <= 5)
-        ][["course_name", "instructor", "rating"]].drop_duplicates()
+        ][["course_name", "instructor", "rating", "price"]].drop_duplicates()
 
         step5_result["pred_score"] = step5_result["rating"]
 
@@ -143,7 +145,9 @@ if "recommendations" in st.session_state:
             ascending=[True, False]
         )
 
-        step5_result.columns = ["Course Name", "Instructor", "Rating", "Pred Score"]
+        step5_result.columns = [
+            "Course Name", "Instructor", "Rating", "Price", "Pred Score"
+        ]
 
         st.header("Step 5: Selected Course with Different Instructors (Rating 4–5)")
         st.dataframe(
