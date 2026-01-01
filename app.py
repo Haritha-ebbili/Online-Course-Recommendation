@@ -7,7 +7,7 @@ st.markdown("""
 <style>
     /* FULL PAGE BACKGROUND COLOR */
     .stApp {
-        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%) !important;
+        background-color: #D5CAE !important;
     }
     /* NEW HEADING COLOR - GOLD */
     .main-header
