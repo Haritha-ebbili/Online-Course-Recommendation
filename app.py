@@ -119,26 +119,35 @@ if 'recommendations' in st.session_state:
     )
     
     if selected_courses:
-        # Filter selected courses with rating between 4 and 5
-        step5_result = df[
-            (df['course_name'].isin(selected_courses)) &
-            (df['rating'] >= 4) &
-            (df['rating'] <= 5)
-        ][['course_name', 'instructor', 'rating']].drop_duplicates()
+    step5_result = df[
+        (df['course_name'].isin(selected_courses)) &
+        (df['rating'] >= 4) &
+        (df['rating'] <= 5)
+    ][['course_name', 'instructor', 'rating']]
 
-        # Predicted score (can be treated as popularity score)
-        step5_result['pred_score'] = step5_result['rating']
+    # Calculate popularity (number of ratings per course)
+    popularity = df.groupby('course_name')['rating'].count().reset_index()
+    popularity.columns = ['course_name', 'rating_count']
 
-        step5_result = step5_result.sort_values(
-            by=['course_name', 'pred_score'],
-            ascending=[True, False]
-        )
+    step5_result = step5_result.merge(popularity, on='course_name')
 
-        step5_result.columns = ['Course Name', 'Instructor', 'Rating', 'Pred Score']
+    # Predicted score (popularity-adjusted)
+    step5_result['pred_score'] = (
+        step5_result['rating'] +
+        np.log1p(step5_result['rating_count']) * 0.1
+    )
 
-        st.header("Step 5: Same Course – Different Instructors (Rating 4–5)")
-        st.dataframe(
-            step5_result,
-            use_container_width=True,
-            hide_index=True
-        )
+    step5_result = step5_result.drop_duplicates()
+    step5_result = step5_result.sort_values(
+        by=['course_name', 'pred_score'], ascending=[True, False]
+    )
+
+    step5_result = step5_result[['course_name', 'instructor', 'rating', 'pred_score']]
+    step5_result.columns = ['Course Name', 'Instructor', 'Rating', 'Pred Score']
+
+    st.header("Step 5: Same Course – Different Instructors (Pred Score Based)")
+    st.dataframe(
+        step5_result.round(2),
+        use_container_width=True,
+        hide_index=True
+    )
