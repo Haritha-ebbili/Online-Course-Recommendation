@@ -112,12 +112,20 @@ if 'recommendations' in st.session_state:
     )
     
     if selected_courses:
-        selected_df = st.session_state.recommendations[
-            st.session_state.recommendations['Course Name'].isin(selected_courses)
-        ]
-        
-        # ✅ NEW Step 5: Different instructors + Different ratings ONLY DATAFRAME
-        step5_result = selected_df.drop_duplicates(subset=['Instructor', 'Rating'])
-        
-        st.header("Step 5: Selected Courses (Different Instructors & Ratings)")
-        st.dataframe(step5_result[['Course Name', 'Instructor', 'Rating', 'Pred Score']])
+        # Get ALL records of selected courses from original dataset
+        step5_result = df[
+            df['course_name'].isin(selected_courses)
+        ][['course_name', 'instructor', 'rating']].drop_duplicates()
+
+        step5_result = step5_result.sort_values(
+            by=['course_name', 'rating'], ascending=[True, False]
+        )
+
+        step5_result.columns = ['Course Name', 'Instructor', 'Rating']
+
+        st.header("Step 5: Same Course – Different Instructors & Ratings")
+        st.dataframe(
+            step5_result,
+            use_container_width=True,
+            hide_index=True
+        )
