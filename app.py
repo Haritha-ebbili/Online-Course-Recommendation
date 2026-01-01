@@ -32,17 +32,11 @@ st.markdown("""
     border-radius: 50px !important;
     padding: 15px 40px !important;
     font-weight: 700 !important;
-    font-size: 18px !important;
 }
 
 .stButton > button:hover {
     background: #3596B5 !important;
-}
-
-.stMultiSelect > div > div > div {
-    border: 3px solid #7b1fa2 !important;
-    border-radius: 15px !important;
-    background: #f3e5f5 !important;
+    transform: translateY(-3px) scale(1.02) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -59,47 +53,43 @@ st.markdown('<h1 class="main-header">Course Recommendation System</h1>', unsafe_
 
 # ================= STEP 1 =================
 st.header("Step 1: Enter User ID")
-user_id = st.number_input("User ID", min_value=1, max_value=49999, value=15796)
+user_id = st.number_input("User ID", min_value=1, value=15796)
 
 # ================= STEP 2 =================
 st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
-# ================= STEP 3 EXECUTION (USER-SPECIFIC) =================
+# ================= STEP 3 EXECUTION (USER-BASED) =================
 if st.button("Generate Recommendations"):
 
-    # Courses already taken by the user
-    user_courses = df[df["user_id"] == user_id]["course_id"].unique()
+    # Courses already taken by this user
+    user_courses = df[df["user_id"] == user_id]["course_name"].unique()
 
-    # Candidate courses (NOT taken by user)
-    candidate_courses = df[~df["course_id"].isin(user_courses)]
+    # Remove already taken courses
+    candidate_courses = df[~df["course_name"].isin(user_courses)]
 
-    # Popularity score = mean rating per course
-    popularity = (
-        candidate_courses
-        .groupby(["course_id", "course_name", "instructor"], as_index=False)
-        .agg(
-            rating=("rating", "mean"),
-            recommendation_score=("rating", "mean")
-        )
+    # Unique course names only
+    unique_courses = candidate_courses.drop_duplicates(subset="course_name")
+
+    # Popularity-based recommendation score
+    unique_courses["recommendation_score"] = (
+        unique_courses["rating"] + np.random.normal(0, 0.05, len(unique_courses))
     )
 
-    recommendations = popularity.sort_values(
-        "recommendation_score", ascending=False
-    ).head(num_recommendations)
+    recommendations = unique_courses.nlargest(
+        num_recommendations, "recommendation_score"
+    )
 
     rec_display = recommendations[
         ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
     ].round(2)
 
-    # Store in session state
     st.session_state.recommendations = rec_display
     st.session_state.course_options = rec_display["course_name"].tolist()
 
 # ================= STEP 3 DISPLAY =================
 if "recommendations" in st.session_state:
-    st.header("Step 3: Recommended Courses")
-
+    st.header("Step 3: Recommended Courses (User-Specific)")
     st.dataframe(
         st.session_state.recommendations,
         use_container_width=True,
@@ -131,7 +121,7 @@ if "recommendations" in st.session_state:
             ascending=[True, False]
         )
 
-        st.header("Step 5: Selected Courses (Rating 4–5)")
+        st.header("Step 5: Selected Courses (High Rated)")
         st.dataframe(
             step5_result.round(2),
             use_container_width=True,
