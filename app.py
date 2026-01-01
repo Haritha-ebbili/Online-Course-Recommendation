@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Course Recommender", layout="wide")
@@ -32,6 +33,11 @@ st.markdown("""
     padding: 15px 40px !important;
     font-weight: 700 !important;
 }
+
+.stButton > button:hover {
+    background: #3596B5 !important;
+    transform: translateY(-3px) scale(1.02) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -43,10 +49,7 @@ def load_data():
 df = load_data()
 
 # ================= TITLE =================
-st.markdown(
-    '<h1 class="main-header">Course Recommendation System</h1>',
-    unsafe_allow_html=True
-)
+st.markdown('<h1 class="main-header">Course Recommendation System</h1>', unsafe_allow_html=True)
 
 # ================= STEP 1 =================
 st.header("Step 1: Enter User ID")
@@ -56,35 +59,35 @@ user_id = st.number_input("User ID", min_value=1, value=15796)
 st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
-# ================= STEP 3 EXECUTION (USER-BASED, NO RANDOMNESS) =================
+# ================= STEP 3 EXECUTION (USER-BASED) =================
 if st.button("Generate Recommendations"):
 
     # Courses already taken by this user
     user_courses = df[df["user_id"] == user_id]["course_name"].unique()
 
-    # Candidate courses (exclude taken ones)
+    # Remove already taken courses
     candidate_courses = df[~df["course_name"].isin(user_courses)]
 
-    # Unique course names
+    # Unique course names only
     unique_courses = candidate_courses.drop_duplicates(subset="course_name")
 
-    # Deterministic recommendation score (dataset-based)
-    unique_courses["recommendation_score"] = unique_courses["rating"]
+    # Popularity-based recommendation score
+    unique_courses["recommendation_score"] = (
+        unique_courses["rating"] + np.random.normal(0, 0.05, len(unique_courses))
+    )
 
-    # Top-N recommendations
-    recommendations = unique_courses.sort_values(
-        by="recommendation_score", ascending=False
-    ).head(num_recommendations)
+    recommendations = unique_courses.nlargest(
+        num_recommendations, "recommendation_score"
+    )
 
     rec_display = recommendations[
         ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
-    ]
+    ].round(2)
 
-    # Store results
     st.session_state.recommendations = rec_display
     st.session_state.course_options = rec_display["course_name"].tolist()
 
-# ================= STEP 3 DISPLAY (ALWAYS VISIBLE) =================
+# ================= STEP 3 DISPLAY =================
 if "recommendations" in st.session_state:
     st.header("Step 3: Recommended Courses (User-Specific)")
     st.dataframe(
@@ -109,7 +112,6 @@ if "recommendations" in st.session_state:
             (df["rating"] <= 5)
         ][["course_id", "course_name", "instructor", "rating"]].drop_duplicates()
 
-        # Step-5 score = rating (refinement only)
         step5_result["recommendation_score"] = step5_result["rating"]
 
         step5_result = step5_result[
@@ -119,9 +121,9 @@ if "recommendations" in st.session_state:
             ascending=[True, False]
         )
 
-        st.header("Step 5: Selected Courses (Rating 4–5)")
+        st.header("Step 5: Selected Courses (High Rated)")
         st.dataframe(
-            step5_result,
+            step5_result.round(2),
             use_container_width=True,
             hide_index=True
         )
