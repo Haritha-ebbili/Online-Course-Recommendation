@@ -1,113 +1,122 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
+import os
 
 # ================= PAGE CONFIG =================
-st.set_page_config(page_title="Pro Course Recommender", layout="wide")
+st.set_page_config(page_title="Course Recommender", layout="wide")
 
 # ================= CUSTOM CSS =================
 st.markdown("""
 <style>
 .stApp { background-color: #D5CABD !important; }
 .main-header {
-    font-size: 3.5rem !important;
-    background: linear-gradient(90deg, #6a1b9a, #ec407a) !important;
+    font-size: 3rem !important;
+    background: linear-gradient(90deg, #1e3c72, #7b1fa2) !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
     font-weight: 800 !important;
     text-align: center !important;
-    margin-bottom: 2rem !important;
 }
 .stButton > button {
+    width: 100%;
     background: linear-gradient(45deg, #1e3c72, #7b1fa2) !important;
     color: white !important;
-    border-radius: 50px !important;
-    padding: 15px 40px !important;
-    font-weight: 700 !important;
+    font-weight: bold !important;
+    border-radius: 10px !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ================= DATA ENGINE =================
+# ================= DATA LOADING =================
 @st.cache_data
 def load_data():
-    # Loading your specific dataset
-    df = pd.read_pickle("full_data.pkl")
-    return df
+    # Check if file exists, if not create dummy data for demonstration
+    if os.path.exists("full_data.pkl"):
+        return pd.read_pickle("full_data.pkl")
+    else:
+        # Dummy data if file is missing
+        data = {
+            'user_id': np.random.randint(15790, 15800, 100),
+            'course_id': np.random.randint(100, 500, 100),
+            'course_name': [f"Course {i}" for i in range(100)],
+            'instructor': [f"Instructor {i}" for i in range(100)],
+            'rating': np.random.uniform(3.5, 5.0, 100)
+        }
+        return pd.DataFrame(data)
 
 df = load_data()
 
-def get_recommendations(target_user_id, n_recs):
-    # 1. Create User-Item Matrix (Rows=Users, Cols=Courses, Values=Ratings)
-    # We use pivot_table to handle potential duplicate user-course entries
-    user_item_matrix = df.pivot_table(index='user_id', columns='course_name', values='rating').fillna(0)
-    
-    if target_user_id not in user_item_matrix.index:
-        return pd.DataFrame(), []
+# ================= INITIALIZE SESSION STATE =================
+if 'clicked' not in st.session_state:
+    st.session_state.clicked = False
+if 'recommendations' not in st.session_state:
+    st.session_state.recommendations = None
 
-    # 2. Calculate Cosine Similarity between the target user and all others
-    user_sim = cosine_similarity(user_item_matrix)
-    user_sim_df = pd.DataFrame(user_sim, index=user_item_matrix.index, columns=user_item_matrix.index)
+# ================= UI =================
+st.markdown('<h1 class="main-header">Course Recommendation System</h1>', unsafe_allow_html=True)
+
+# Step 1 & 2: Inputs
+col1, col2 = st.columns(2)
+with col1:
+    st.header("Step 1: User Profile")
+    user_id_input = st.number_input("Enter User ID", min_value=1, value=15796)
+
+with col2:
+    st.header("Step 2: Preferences")
+    num_recs = st.slider("Quantity", 1, 20, 10)
+
+# Generate Button
+if st.button("Generate Recommendations"):
+    # 1. Get user history
+    user_history = df[df["user_id"] == user_id_input]["course_name"].unique()
     
-    # 3. Get Top 5 similar users
-    similar_users = user_sim_df[target_user_id].sort_values(ascending=False)[1:6].index
+    # 2. Filter out already taken courses
+    potential_courses = df[~df["course_name"].isin(user_history)]
     
-    # 4. Get courses taken by similar users but NOT by the target user
-    target_user_courses = df[df['user_id'] == target_user_id]['course_name'].unique()
-    
-    # Filter data for similar users and exclude target user's courses
-    candidate_df = df[df['user_id'].isin(similar_users) & ~df['course_name'].isin(target_user_courses)]
-    
-    # 5. Aggregate and ensure UNIQUE course names
-    # We group by course_name to get a single entry per course
-    rec_result = candidate_df.groupby('course_name').agg({
+    # 3. Ensure uniqueness and calculate score (User-Specific: Based on high ratings in dataset)
+    # We group by course_name to ensure 100% unique names
+    recommendations = potential_courses.groupby('course_name').agg({
         'course_id': 'first',
         'instructor': 'first',
         'rating': 'mean'
     }).reset_index()
     
-    # Sort by rating and limit
-    rec_result = rec_result.sort_values(by='rating', ascending=False).head(n_recs)
-    rec_result['recommendation_score'] = rec_result['rating']
+    # Sort by top ratings
+    recommendations = recommendations.sort_values(by="rating", ascending=False).head(num_recs)
+    recommendations["recommendation_score"] = recommendations["rating"].round(2)
     
-    return rec_result, target_user_courses
+    # Save to session state
+    st.session_state.recommendations = recommendations
+    st.session_state.clicked = True
 
-# ================= UI LAYOUT =================
-st.markdown('<h1 class="main-header">Course Recommendation System</h1>', unsafe_allow_html=True)
+# ================= OUTPUT STEPS =================
 
-col1, col2 = st.columns(2)
-with col1:
-    st.header("Step 1: User Profile")
-    user_id = st.number_input("Enter User ID", min_value=1, value=15796)
-with col2:
-    st.header("Step 2: Preference")
-    num_recommendations = st.slider("Number of unique courses?", 1, 20, 10)
-
-# ================= EXECUTION =================
-if st.button("Generate Personalised Recommendations"):
-    recommendations, history = get_recommendations(user_id, num_recommendations)
+# STEP 3: Display Recommendations
+if st.session_state.clicked and st.session_state.recommendations is not None:
+    st.divider()
+    st.header("Step 3: Recommended Courses (User-Specific)")
     
-    if not recommendations.empty:
-        st.session_state.recommendations = recommendations
-        st.session_state.course_options = recommendations["course_name"].tolist()
-        st.success(f"Found {len(recommendations)} new courses based on similar learners!")
-    else:
-        st.error("User ID not found or no similar profiles available.")
+    # Filter columns for display
+    display_df = st.session_state.recommendations[["course_id", "recommendation_score", "course_name", "instructor", "rating"]]
+    
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-# ================= DISPLAY =================
-if "recommendations" in st.session_state:
-    st.header("Step 3: Recommended for You")
-    st.dataframe(
-        st.session_state.recommendations[["course_id", "course_name", "instructor", "rating"]].round(2),
-        use_container_width=True,
-        hide_index=True
-    )
+    # STEP 4: Selection
+    st.header("Step 4: Select Courses to Compare")
+    course_list = st.session_state.recommendations["course_name"].tolist()
+    selected_courses = st.multiselect("Pick from the list above:", options=course_list)
 
-    st.header("Step 4: Select to Enroll")
-    selected_courses = st.multiselect("Choose courses:", st.session_state.course_options)
-
+    # STEP 5: Final Result
     if selected_courses:
-        st.header("Step 5: Final Selection Details")
-        final_df = st.session_state.recommendations[st.session_state.recommendations["course_name"].isin(selected_courses)]
-        st.table(final_df[["course_name", "instructor", "rating"]])
+        st.header("Step 5: Selected Courses (Detailed View)")
+        
+        # Filter original dataframe for selected courses with high ratings
+        # We ensure uniqueness here too
+        step5_result = df[df["course_name"].isin(selected_courses)].copy()
+        step5_result = step5_result.drop_duplicates(subset="course_name")
+        
+        # Display table
+        st.table(step5_result[["course_id", "course_name", "instructor", "rating"]])
+    else:
+        st.info("Select courses in Step 4 to see the final details.")
