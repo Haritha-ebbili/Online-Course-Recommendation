@@ -7,7 +7,7 @@ st.markdown("""
 <style>
     /* FULL PAGE BACKGROUND COLOR */
     .stApp {
-        background-color: #ADC5CF !important;
+        background-color: #D5CABD !important;
     }
     /* NEW HEADING COLOR - GOLD */
     .main-header
