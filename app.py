@@ -44,7 +44,7 @@ st.markdown("""
     }
 
     .stButton > button:hover {
-        background: linear-gradient(45deg, #283593, #9c27b0) !important;
+        background: #3596B5 !important;
         transform: translateY(-3px) scale(1.02) !important;
         box-shadow: 0 14px 40px rgba(156, 39, 176, 0.6) !important;
     }
