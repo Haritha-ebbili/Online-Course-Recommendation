@@ -4,28 +4,27 @@ import numpy as np
 import os
 
 # ================= PAGE CONFIG =================
-st.set_page_config(page_title="Course Recommender", layout="wide")
+st.set_page_config(page_title="Personalized Course Recommender", layout="wide")
 
 # ================= CUSTOM CSS =================
 st.markdown("""
 <style>
 .stApp { background-color: #D5CABD !important; }
-
 .main-header {
     font-size: 3rem !important;
     background: linear-gradient(90deg, #1e3c72, #7b1fa2) !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
     font-weight: 800 !important;
-    text-align: center !important;
+    text-align: center;
 }
-
 .stButton > button {
     width: 100%;
     background: linear-gradient(45deg, #1e3c72, #7b1fa2) !important;
     color: white !important;
-    font-weight: bold !important;
     border-radius: 10px !important;
+    height: 3em;
+    font-weight: bold;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -36,114 +35,96 @@ def load_data():
     if os.path.exists("full_data.pkl"):
         return pd.read_pickle("full_data.pkl")
     else:
-        # fallback demo data
-        data = {
-            'user_id': np.random.randint(15790, 15800, 100),
-            'course_id': np.random.randint(100, 500, 100),
-            'course_name': [f"Course {i}" for i in range(100)],
-            'instructor': [f"Instructor {i}" for i in range(100)],
-            'rating': np.random.uniform(3.5, 5.0, 100)
-        }
-        return pd.DataFrame(data)
+        # Fallback/Sample data structure if file not found
+        cols = ['user_id', 'course_id', 'course_name', 'instructor', 'rating']
+        return pd.DataFrame(columns=cols)
 
 df = load_data()
 
-# ================= SESSION STATE =================
-if "recommendations" not in st.session_state:
+# ================= SESSION STATE INITIALIZATION =================
+# This prevents the UI from disappearing when you interact with widgets
+if 'recommendations' not in st.session_state:
     st.session_state.recommendations = None
-if "clicked" not in st.session_state:
-    st.session_state.clicked = False
+if 'selected_user' not in st.session_state:
+    st.session_state.selected_user = None
 
-# ================= TITLE =================
+# ================= UI HEADER =================
 st.markdown('<h1 class="main-header">Course Recommendation System</h1>', unsafe_allow_html=True)
 
-# ================= STEP 1 & STEP 2 =================
-col1, col2 = st.columns(2)
+# STEPS 1 & 2: INPUTS
+col1, col2 = st.columns([1, 1])
 
 with col1:
-    st.header("Step 1: User Profile")
-    user_id_input = st.number_input("Enter User ID", min_value=1, value=15796)
+    st.header("Step 1: Enter User ID")
+    user_id = st.number_input("User ID", min_value=1, value=15796, step=1)
 
 with col2:
-    st.header("Step 2: Preferences")
-    num_recs = st.slider("Number of recommendations", 1, 20, 10)
+    st.header("Step 2: Recommendations")
+    num_recs = st.slider("Number of unique courses?", 1, 20, 10)
 
-# ================= GENERATE RECOMMENDATIONS =================
+# RECOMMENDATION LOGIC
 if st.button("Generate Recommendations"):
+    # 1. Identify user history
+    user_history = df[df["user_id"] == user_id]["course_name"].unique()
+    
+    # 2. Collaborative Filtering: Find users who took the same courses
+    similar_users = df[df["course_name"].isin(user_history) & (df["user_id"] != user_id)]["user_id"].unique()
+    
+    # 3. Get candidate courses (taken by similar users, not by target user)
+    candidates = df[df["user_id"].isin(similar_users) & ~df["course_name"].isin(user_history)]
+    
+    # Fallback: If no similar users, suggest top rated courses not taken by user
+    if candidates.empty:
+        candidates = df[~df["course_name"].isin(user_history)]
 
-    # 1️⃣ Courses already taken by the user
-    user_history = df[df["user_id"] == user_id_input]["course_name"].unique()
+    # 4. Aggregating to ensure UNIQUE course names
+    unique_recs = candidates.groupby("course_name").agg({
+        "course_id": "first",
+        "instructor": "first",
+        "rating": "mean"
+    }).reset_index()
 
-    # 2️⃣ Remove already taken courses
-    candidate_courses = df[~df["course_name"].isin(user_history)]
+    # 5. Sort and Save
+    unique_recs = unique_recs.sort_values(by="rating", ascending=False).head(num_recs)
+    unique_recs["recommendation_score"] = unique_recs["rating"].round(2)
+    
+    st.session_state.recommendations = unique_recs
+    st.session_state.selected_user = user_id
 
-    # 3️⃣ Keep ONLY high-quality courses (rating 4–5)
-    candidate_courses = candidate_courses[
-        (candidate_courses["rating"] >= 4) &
-        (candidate_courses["rating"] <= 5)
-    ]
+# ================= OUTPUT STEPS 3, 4, 5 =================
 
-    # 4️⃣ Unique course names with aggregated rating
-    recommendations = (
-        candidate_courses
-        .groupby("course_name", as_index=False)
-        .agg({
-            "course_id": "first",
-            "instructor": "first",
-            "rating": "mean"
-        })
-    )
-
-    # 5️⃣ Rank courses (best first)
-    recommendations = recommendations.sort_values(
-        by="rating", ascending=False
-    ).head(num_recs)
-
-    # 6️⃣ Recommendation score = ranking score (4–5)
-    recommendations["recommendation_score"] = recommendations["rating"].round(2)
-
-    st.session_state.recommendations = recommendations
-    st.session_state.clicked = True
-
-# ================= STEP 3 =================
-if st.session_state.clicked and st.session_state.recommendations is not None:
+if st.session_state.recommendations is not None:
     st.divider()
-    st.header("Step 3: Recommended Courses (Rating 4–5 Only)")
+    
+    # STEP 3: DISPLAY RECOMMENDATIONS
+    st.header(f"Step 3: Recommended for User {st.session_state.selected_user}")
+    rec_display = st.session_state.recommendations[["course_id", "recommendation_score", "course_name", "instructor", "rating"]]
+    st.dataframe(rec_display, use_container_width=True, hide_index=True)
 
-    display_df = st.session_state.recommendations[
-        ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
-    ]
+    # STEP 4: SELECTION
+    st.header("Step 4: Select Courses")
+    all_options = st.session_state.recommendations["course_name"].tolist()
+    selected_names = st.multiselect("Pick courses to see details:", options=all_options)
 
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-    # ================= STEP 4 =================
-    st.header("Step 4: Select Courses to Compare")
-    course_list = display_df["course_name"].tolist()
-    selected_courses = st.multiselect("Choose courses:", course_list)
-
-    # ================= STEP 5 =================
-    if selected_courses:
-        st.header("Step 5: Selected Courses (High-Quality Ranking)")
-
-        step5_result = df[
-            (df["course_name"].isin(selected_courses)) &
-            (df["rating"] >= 4) &
-            (df["rating"] <= 5)
-        ][["course_id", "course_name", "instructor", "rating"]]
-
-        step5_result = step5_result.drop_duplicates(subset="course_name")
-        step5_result = step5_result.sort_values(
-            by="rating", ascending=False
-        )
-
-        step5_result["recommendation_score"] = step5_result["rating"].round(2)
-
-        st.dataframe(
-            step5_result[
-                ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
-            ],
-            use_container_width=True,
-            hide_index=True
-        )
+    # STEP 5: FILTERED RANKING (4 to 5)
+    if selected_names:
+        st.header("Step 5: Selected Courses (Highly Rated 4.0 - 5.0)")
+        
+        # Filter logic: Must be in selection AND rating between 4 and 5
+        step5_df = df[
+            (df["course_name"].isin(selected_names)) & 
+            (df["rating"] >= 4.0) & 
+            (df["rating"] <= 5.0)
+        ].copy()
+        
+        # Ensure unique course names in the final display
+        step5_df = step5_df.drop_duplicates(subset="course_name")
+        
+        if not step5_df.empty:
+            # Add a ranking column based on rating
+            step5_df = step5_df.sort_values(by="rating", ascending=False)
+            st.table(step5_df[["course_id", "course_name", "instructor", "rating"]])
+        else:
+            st.warning("None of the selected courses meet the 4.0 - 5.0 rating criteria.")
     else:
-        st.info("Select courses in Step 4 to view ranked details.")
+        st.info("Please select courses in Step 4 to proceed.")
