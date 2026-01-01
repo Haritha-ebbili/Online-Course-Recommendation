@@ -27,20 +27,23 @@ st.markdown("""
         background: linear-gradient(90deg, #ff9800, #ffc107) !important;
     }
     .stButton > button {
-        background: linear-gradient(45deg, #2e7d32, #4caf50) !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 50px !important;
-        padding: 15px 40px !important;
-        font-weight: 700 !important;
-        font-size: 18px !important;
-        box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4) !important;
-        transition: all 0.4s ease !important;
+    background: linear-gradient(45deg, #1e3c72, #7b1fa2) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 50px !important;
+    padding: 15px 40px !important;
+    font-weight: 700 !important;
+    font-size: 18px !important;
+    box-shadow: 0 8px 25px rgba(123, 31, 162, 0.45) !important;
+    transition: all 0.35s ease !important;
     }
+
     .stButton > button:hover {
-        background: linear-gradient(45deg, #388e3c, #66bb6a) !important;
-        transform: translateY(-3px) !important;
-        box-shadow: 0 12px 35px rgba(76, 175, 80, 0.6) !important;
+        background: linear-gradient(45deg, #283593, #9c27b0) !important;
+        transform: translateY(-3px) scale(1.02) !important;
+        box-shadow: 0 14px 40px rgba(156, 39, 176, 0.6) !important;
+    }
+
     }
     .stMultiSelect > div > div > div {
         border: 3px solid #7b1fa2 !important;
