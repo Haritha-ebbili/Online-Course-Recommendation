@@ -90,23 +90,19 @@ st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
 if st.button(" Generate Recommendations"):
-    #  UNIQUE COURSE NAMES ONLY
+    # UNIQUE COURSE NAMES ONLY
     unique_by_name = df.drop_duplicates(subset='course_name')
-    
-    unique_by_name['score'] = unique_by_name['rating'] + np.random.normal(0, 0.1, len(unique_by_name))
+
+    unique_by_name['score'] = (
+        unique_by_name['rating'] + np.random.normal(0, 0.1, len(unique_by_name))
+    )
     recommendations = unique_by_name.nlargest(num_recommendations, 'score')
-    
-    st.header("Step 3: Recommended Courses")
+
     display_cols = ['course_name', 'instructor', 'rating', 'score']
     rec_display = recommendations[display_cols].round(2)
     rec_display.columns = ['Course Name', 'Instructor', 'Rating', 'Pred Score']
-    
-    st.dataframe(
-        rec_display,
-        use_container_width=True,
-        hide_index=True
-    )
-    
+
+    #  Store in session state
     st.session_state.recommendations = rec_display
     st.session_state.course_options = rec_display['Course Name'].tolist()
 
