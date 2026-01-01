@@ -119,20 +119,24 @@ if 'recommendations' in st.session_state:
     )
     
     if selected_courses:
-        #  Only ratings between 4 and 5
+        # Filter selected courses with rating between 4 and 5
         step5_result = df[
             (df['course_name'].isin(selected_courses)) &
             (df['rating'] >= 4) &
             (df['rating'] <= 5)
         ][['course_name', 'instructor', 'rating']].drop_duplicates()
 
+        # Predicted score (can be treated as popularity score)
+        step5_result['pred_score'] = step5_result['rating']
+
         step5_result = step5_result.sort_values(
-            by=['course_name', 'rating'], ascending=[True, False]
+            by=['course_name', 'pred_score'],
+            ascending=[True, False]
         )
 
-        step5_result.columns = ['Course Name', 'Instructor', 'Rating']
+        step5_result.columns = ['Course Name', 'Instructor', 'Rating', 'Pred Score']
 
-        st.header("Step 5: Same Course – Different Instructors (Rating 4–5 Only)")
+        st.header("Step 5: Same Course – Different Instructors (Rating 4–5)")
         st.dataframe(
             step5_result,
             use_container_width=True,
