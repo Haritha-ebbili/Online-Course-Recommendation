@@ -92,31 +92,27 @@ num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
 # ================= STEP 3 EXECUTION =================
 if st.button("Generate Recommendations"):
+    # Unique courses only
     unique_courses = df.drop_duplicates(subset="course_name")
 
-    unique_courses["score"] = (
+    # Recommendation score (popularity-based)
+    unique_courses["recommendation_score"] = (
         unique_courses["rating"] + np.random.normal(0, 0.1, len(unique_courses))
     )
 
-    recommendations = unique_courses.nlargest(num_recommendations, "score")
+    recommendations = unique_courses.nlargest(
+        num_recommendations, "recommendation_score"
+    )
 
     rec_display = recommendations[
-        ["course_name", "instructor", "rating", "course_price", "score"]
+        ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
     ].round(2)
-
-    rec_display.columns = [
-        "Course Name",
-        "Instructor",
-        "Rating",
-        "Course Price",
-        "Pred Score"
-    ]
 
     # Store in session state
     st.session_state.recommendations = rec_display
-    st.session_state.course_options = rec_display["Course Name"].tolist()
+    st.session_state.course_options = rec_display["course_name"].tolist()
 
-# ================= STEP 3 DISPLAY =================
+# ================= STEP 3 DISPLAY (ALWAYS VISIBLE) =================
 if "recommendations" in st.session_state:
     st.header("Step 3: Recommended Courses")
 
@@ -140,26 +136,21 @@ if "recommendations" in st.session_state:
             (df["course_name"].isin(selected_courses)) &
             (df["rating"] >= 4) &
             (df["rating"] <= 5)
-        ][["course_name", "instructor", "rating", "course_price"]].drop_duplicates()
+        ][["course_id", "course_name", "instructor", "rating"]].drop_duplicates()
 
-        step5_result["pred_score"] = step5_result["rating"]
+        # Recommendation score for Step-5
+        step5_result["recommendation_score"] = step5_result["rating"]
 
-        step5_result = step5_result.sort_values(
-            by=["course_name", "pred_score"],
+        step5_result = step5_result[
+            ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
+        ].sort_values(
+            by=["course_name", "recommendation_score"],
             ascending=[True, False]
         )
 
-        step5_result.columns = [
-            "Course Name",
-            "Instructor",
-            "Rating",
-            "Course Price",
-            "Pred Score"
-        ]
-
-        st.header("Step 5: Selected Course with Different Instructors (Rating 4–5)")
+        st.header("Step 5: Selected Courses (Rating 4–5)")
         st.dataframe(
-            step5_result,
+            step5_result.round(2),
             use_container_width=True,
             hide_index=True
         )
