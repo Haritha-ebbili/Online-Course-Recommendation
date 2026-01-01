@@ -15,14 +15,15 @@ st.markdown("""
         background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%) !important;
     }
     .main-header {
-        font-size: 3.5rem !important;
-        background: linear-gradient(135deg, #1976d2, #42a5f5) !important;
-        -webkit-background-clip: text !important;
-        -webkit-text-fill-color: transparent !important;
-        font-weight: 800 !important;
-        text-align: center !important;
-        margin-bottom: 2rem !important;
+    font-size: 3.5rem !important;
+    background: linear-gradient(90deg, #6a1b9a, #ec407a) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    font-weight: 800 !important;
+    text-align: center !important;
+    margin-bottom: 2rem !important;
     }
+
     .stSlider > div > div > div > div {
         background: linear-gradient(90deg, #ff9800, #ffc107) !important;
     }
@@ -85,8 +86,8 @@ user_id = st.number_input("User ID", min_value=1, max_value=49999, value=15796)
 st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
-if st.button("🚀 Generate Recommendations"):
-    # ✅ UNIQUE COURSE NAMES ONLY
+if st.button(" Generate Recommendations"):
+    #  UNIQUE COURSE NAMES ONLY
     unique_by_name = df.drop_duplicates(subset='course_name')
     
     unique_by_name['score'] = unique_by_name['rating'] + np.random.normal(0, 0.1, len(unique_by_name))
@@ -115,7 +116,7 @@ if 'recommendations' in st.session_state:
     )
     
     if selected_courses:
-        # ✅ Only ratings between 4 and 5
+        #  Only ratings between 4 and 5
         step5_result = df[
             (df['course_name'].isin(selected_courses)) &
             (df['rating'] >= 4) &
