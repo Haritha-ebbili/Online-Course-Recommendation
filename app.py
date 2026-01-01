@@ -136,7 +136,7 @@ if 'recommendations' in st.session_state:
 
         step5_result.columns = ['Course Name', 'Instructor', 'Rating', 'Pred Score']
 
-        st.header("Step 5: Same Course – Different Instructors (Rating 4–5)")
+        st.header("Step 5: Selected Course with Different Instructors (Rating 4–5)")
         st.dataframe(
             step5_result,
             use_container_width=True,
