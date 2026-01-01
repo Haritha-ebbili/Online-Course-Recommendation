@@ -18,6 +18,29 @@ st.markdown("""
     text-align: center !important;
     margin-bottom: 2rem !important;
 }
+/* BUTTON */
+.stButton > button {
+    background: linear-gradient(45deg, #6a1b9a, #4527a0) !important; /* Deep Purple Gradient */
+    color: white !important;
+    border: none !important;
+    border-radius: 12px !important; /* Slightly more modern than 50px */
+    padding: 12px 30px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.5px !important;
+    box-shadow: 0 4px 15px rgba(106, 27, 154, 0.3) !important;
+    transition: all 0.3s ease !important;
+    width: 100%; /* Makes the button full width for better UX */
+}
+
+.stButton > button:hover {
+    background: linear-gradient(45deg, #4527a0, #6a1b9a) !important; /* Reverse gradient on hover */
+    box-shadow: 0 6px 20px rgba(106, 27, 154, 0.4) !important;
+    transform: translateY(-2px) !important;
+}
+
+.stButton > button:active {
+    transform: translateY(0px) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
