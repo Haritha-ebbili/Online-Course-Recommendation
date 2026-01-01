@@ -25,8 +25,11 @@ st.markdown("""
     }
 
     .stSlider > div > div > div > div {
-        background: linear-gradient(90deg, #ff9800, #ffc107) !important;
+    background: linear-gradient(90deg, #7b1fa2, #ec407a) !important;
+    height: 10px !important;
+    border-radius: 12px !important;
     }
+
     .stButton > button {
     background: linear-gradient(45deg, #1e3c72, #7b1fa2) !important;
     color: white !important;
