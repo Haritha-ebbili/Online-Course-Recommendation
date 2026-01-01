@@ -90,19 +90,30 @@ user_id = st.number_input("User ID", min_value=1, max_value=49999, value=15796)
 st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
-# ================= STEP 3 EXECUTION =================
+# ================= STEP 3 EXECUTION (USER-BASED) =================
 if st.button("Generate Recommendations"):
-    # Unique courses only
-    unique_courses = df.drop_duplicates(subset="course_name")
 
-    # Recommendation score (popularity-based)
-    unique_courses["recommendation_score"] = (
-        unique_courses["rating"] + np.random.normal(0, 0.1, len(unique_courses))
+    # Courses already taken by the user
+    user_courses = df[df["user_id"] == user_id]["course_id"].unique()
+
+    # Candidate courses = courses NOT taken by the user
+    candidate_courses = df[~df["course_id"].isin(user_courses)]
+
+    # Aggregate popularity per course
+    course_popularity = (
+        candidate_courses
+        .groupby(["course_id", "course_name", "instructor"], as_index=False)
+        .agg(
+            rating=("rating", "mean"),
+            recommendation_score=("rating", "mean")
+        )
     )
 
-    recommendations = unique_courses.nlargest(
-        num_recommendations, "recommendation_score"
-    )
+    # Top-N recommendations
+    recommendations = course_popularity.sort_values(
+        by="recommendation_score",
+        ascending=False
+    ).head(num_recommendations)
 
     rec_display = recommendations[
         ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
@@ -114,7 +125,7 @@ if st.button("Generate Recommendations"):
 
 # ================= STEP 3 DISPLAY (ALWAYS VISIBLE) =================
 if "recommendations" in st.session_state:
-    st.header("Step 3: Recommended Courses")
+    st.header(f"Step 3: Recommended Courses for User {user_id}")
 
     st.dataframe(
         st.session_state.recommendations,
@@ -138,7 +149,7 @@ if "recommendations" in st.session_state:
             (df["rating"] <= 5)
         ][["course_id", "course_name", "instructor", "rating"]].drop_duplicates()
 
-        # Recommendation score for Step-5
+        # Recommendation score = rating (refinement stage)
         step5_result["recommendation_score"] = step5_result["rating"]
 
         step5_result = step5_result[
