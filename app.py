@@ -11,7 +11,7 @@ st.markdown("""
     }
     /* NEW HEADING COLOR - GOLD */
     .main-header
-    section[data-testid="stAppViewContainer"] {
+     {
         background: #AD5E00!important;
     }
     .main-header {
