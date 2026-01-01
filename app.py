@@ -112,7 +112,7 @@ if 'recommendations' in st.session_state:
     )
     
     if selected_courses:
-        # Filter selected courses with rating between 4 and 5
+        # ✅ Only ratings between 4 and 5
         step5_result = df[
             (df['course_name'].isin(selected_courses)) &
             (df['rating'] >= 4) &
@@ -125,7 +125,7 @@ if 'recommendations' in st.session_state:
 
         step5_result.columns = ['Course Name', 'Instructor', 'Rating']
 
-        st.header("Step 5: Same Course – Different Instructors (Rating 4–5)")
+        st.header("Step 5: Same Course – Different Instructors (Rating 4–5 Only)")
         st.dataframe(
             step5_result,
             use_container_width=True,
