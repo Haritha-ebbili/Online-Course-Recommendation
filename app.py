@@ -8,13 +8,8 @@ st.set_page_config(page_title="Course Recommender", layout="wide")
 # ================= CUSTOM CSS =================
 st.markdown("""
 <style>
+.stApp { background-color: #D5CABD !important; }
 
-/* FULL PAGE BACKGROUND COLOR */
-.stApp {
-    background-color: #D5CABD !important;
-}
-
-/* MAIN HEADER */
 .main-header {
     font-size: 3.5rem !important;
     background: linear-gradient(90deg, #6a1b9a, #ec407a) !important;
@@ -25,50 +20,30 @@ st.markdown("""
     margin-bottom: 2rem !important;
 }
 
-/* SLIDER */
 .stSlider > div > div > div > div {
     background-color: #7b1fa2 !important;
     height: 10px !important;
     border-radius: 12px !important;
 }
 
-/* BUTTON */
 .stButton > button {
     background: linear-gradient(45deg, #1e3c72, #7b1fa2) !important;
     color: white !important;
-    border: none !important;
     border-radius: 50px !important;
     padding: 15px 40px !important;
     font-weight: 700 !important;
     font-size: 18px !important;
-    box-shadow: 0 8px 25px rgba(123, 31, 162, 0.45) !important;
-    transition: all 0.35s ease !important;
 }
 
 .stButton > button:hover {
     background: #3596B5 !important;
-    transform: translateY(-3px) scale(1.02) !important;
 }
 
-/* MULTISELECT */
 .stMultiSelect > div > div > div {
     border: 3px solid #7b1fa2 !important;
     border-radius: 15px !important;
     background: #f3e5f5 !important;
 }
-
-/* TABLE */
-.stDataFrame table {
-    border-radius: 15px !important;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.1) !important;
-}
-
-.stDataFrame thead tr th {
-    background: #1976d2 !important;
-    color: white !important;
-    font-weight: 700 !important;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -90,17 +65,17 @@ user_id = st.number_input("User ID", min_value=1, max_value=49999, value=15796)
 st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
-# ================= STEP 3 EXECUTION (USER-BASED) =================
+# ================= STEP 3 EXECUTION (USER-SPECIFIC) =================
 if st.button("Generate Recommendations"):
 
     # Courses already taken by the user
     user_courses = df[df["user_id"] == user_id]["course_id"].unique()
 
-    # Candidate courses = courses NOT taken by the user
+    # Candidate courses (NOT taken by user)
     candidate_courses = df[~df["course_id"].isin(user_courses)]
 
-    # Aggregate popularity per course
-    course_popularity = (
+    # Popularity score = mean rating per course
+    popularity = (
         candidate_courses
         .groupby(["course_id", "course_name", "instructor"], as_index=False)
         .agg(
@@ -109,10 +84,8 @@ if st.button("Generate Recommendations"):
         )
     )
 
-    # Top-N recommendations
-    recommendations = course_popularity.sort_values(
-        by="recommendation_score",
-        ascending=False
+    recommendations = popularity.sort_values(
+        "recommendation_score", ascending=False
     ).head(num_recommendations)
 
     rec_display = recommendations[
@@ -123,9 +96,9 @@ if st.button("Generate Recommendations"):
     st.session_state.recommendations = rec_display
     st.session_state.course_options = rec_display["course_name"].tolist()
 
-# ================= STEP 3 DISPLAY (ALWAYS VISIBLE) =================
+# ================= STEP 3 DISPLAY =================
 if "recommendations" in st.session_state:
-    st.header(f"Step 3: Recommended Courses for User {user_id}")
+    st.header("Step 3: Recommended Courses")
 
     st.dataframe(
         st.session_state.recommendations,
@@ -149,7 +122,6 @@ if "recommendations" in st.session_state:
             (df["rating"] <= 5)
         ][["course_id", "course_name", "instructor", "rating"]].drop_duplicates()
 
-        # Recommendation score = rating (refinement stage)
         step5_result["recommendation_score"] = step5_result["rating"]
 
         step5_result = step5_result[
