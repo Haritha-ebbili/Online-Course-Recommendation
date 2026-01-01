@@ -12,7 +12,7 @@ st.markdown("""
     /* NEW HEADING COLOR - GOLD */
     .main-header
     section[data-testid="stAppViewContainer"] {
-        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%) !important;
+        background: #AD5E00!important;
     }
     .main-header {
     font-size: 3.5rem !important;
