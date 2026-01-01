@@ -12,7 +12,7 @@ st.markdown("""
     /* NEW HEADING COLOR - GOLD */
     .main-header
      {
-        background: #AD5E00!important;
+        background:#AD5E00!important;
     }
     .main-header {
     font-size: 3.5rem !important;
