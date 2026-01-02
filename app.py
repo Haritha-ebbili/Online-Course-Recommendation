@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# PAGE CONFIG 
+# ================= PAGE CONFIG =================
 st.set_page_config(page_title="Course Recommender", layout="wide")
 
-# CUSTOM CSS (Kept your original styling)
+# ================= CUSTOM CSS =================
 st.markdown("""
 <style>
 .stApp { background-color: #D5CABD !important; }
@@ -18,73 +18,55 @@ st.markdown("""
     text-align: center !important;
     margin-bottom: 2rem !important;
 }
-/* BUTTON */
 .stButton > button {
-    background: linear-gradient(45deg, #6a1b9a, #4527a0) !important; /* Deep Purple Gradient */
+    background: linear-gradient(45deg, #6a1b9a, #4527a0) !important;
     color: white !important;
     border: none !important;
-    border-radius: 12px !important; /* Slightly more modern than 50px */
+    border-radius: 12px !important;
     padding: 12px 30px !important;
     font-weight: 700 !important;
-    letter-spacing: 0.5px !important;
-    box-shadow: 0 4px 15px rgba(106, 27, 154, 0.3) !important;
-    transition: all 0.3s ease !important;
-    width: 100%; /* Makes the button full width for better UX */
-}
-
-.stButton > button:hover {
-    background: linear-gradient(45deg, #4527a0, #6a1b9a) !important; /* Reverse gradient on hover */
-    box-shadow: 0 6px 20px rgba(106, 27, 154, 0.4) !important;
-    transform: translateY(-2px) !important;
-}
-
-.stButton > button:active {
-    transform: translateY(0px) !important;
+    width: 100%;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# LOAD DATA
+# ================= LOAD DATA =================
 @st.cache_data
 def load_data():
-    # Ensure your pkl file contains 'course_id'
     return pd.read_pickle("full_data.pkl")
 
 df = load_data()
 
-# TITLE 
+# ================= TITLE =================
 st.markdown('<h1 class="main-header">Course Recommendation System</h1>', unsafe_allow_html=True)
 
-# STEP 1 
+# ================= STEP 1 =================
 st.header("Step 1: Enter User ID")
 user_id = st.number_input("User ID", min_value=1, max_value=49999, value=15796)
 
-# STEP 2 
+# ================= STEP 2 =================
 st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
-# STEP 3 EXECUTION 
+# ================= STEP 3 =================
 if st.button("Generate Recommendations"):
     unique_courses = df.drop_duplicates(subset="course_name").copy()
 
-    # Generate recommendation score
-    unique_courses["recommendation_score"] = (
-        unique_courses["rating"] + np.random.normal(0, 0.1, len(unique_courses))
+    # Use rating as recommendation score
+    unique_courses["recommendation_score"] = unique_courses["rating"]
+
+    recommendations = unique_courses.nlargest(
+        num_recommendations, "recommendation_score"
     )
 
-    # Get Top N
-    recommendations = unique_courses.nlargest(num_recommendations, "recommendation_score")
-
-    # Select requested columns: course_id, recommendation_score, course_name, instructor, rating
     rec_display = recommendations[
         ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
     ].round(2)
 
-    # Store in session state
     st.session_state.recommendations = rec_display
     st.session_state.course_options = rec_display["course_name"].tolist()
 
-# STEP 3 DISPLAY
+# ================= STEP 3 DISPLAY =================
 if "recommendations" in st.session_state:
     st.header("Step 3: Recommended Courses")
     st.dataframe(
@@ -93,42 +75,44 @@ if "recommendations" in st.session_state:
         hide_index=True
     )
 
-# STEP 4 
+# ================= STEP 4 =================
 if "recommendations" in st.session_state:
     st.header("Step 4: Select Courses")
     selected_courses = st.multiselect(
-        "Choose courses to find the best instructors:",
+        "Choose courses to find the best instructor:",
         st.session_state.course_options
     )
 
-    # STEP 5: High ranked course from selection
+    # ================= STEP 5 =================
     if selected_courses:
-        # Filter data for selected courses and high ratings
-        step5_result = df[
+        step5_df = df[
             (df["course_name"].isin(selected_courses)) &
             (df["rating"] >= 4)
         ].copy()
 
-        # Rename/Add recommendation_score (using rating as the rank metric here)
-        step5_result["recommendation_score"] = step5_result["rating"]
+        if not step5_df.empty:
+            # Get best instructor per course
+            idx = step5_df.groupby("course_name")["rating"].idxmax()
+            top_instructors = step5_df.loc[idx]
 
-        # Sort by rating descending to get the "High Ranked" ones
-        step5_result = step5_result.sort_values(by="rating", ascending=False)
+            top_instructors["recommendation_score"] = top_instructors["rating"]
 
-        # Select requested columns
-        step5_display = step5_result[
-            ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
-        ]
+            top_instructors = top_instructors.sort_values(
+                by="recommendation_score",
+                ascending=False
+            )
 
-        # GET ONLY THE HIGHEST RANKED COURSE (Top 1)
-        top_course = step5_display.head(1)
+            step5_display = top_instructors[
+                ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
+            ].round(2)
 
-        st.header("Step 5: Highest Ranked Course from Selection")
-        if not top_course.empty:
+            st.header("Step 5: Best Instructor per Selected Course")
             st.dataframe(
-                top_course,
+                step5_display,
                 use_container_width=True,
                 hide_index=True
             )
         else:
-            st.warning("No instructors found with a rating of 4 or higher for these selections.")
+            st.warning(
+                "No instructors found with rating 4 or above for the selected courses."
+            )
