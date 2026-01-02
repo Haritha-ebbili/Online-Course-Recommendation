@@ -106,7 +106,7 @@ if "recommendations" in st.session_state:
                 ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
             ].round(2)
 
-            st.header("Step 5: Best Instructor per Selected Course")
+            st.header("Step 5: Best Instructor per Selected Course with High Rating")
             st.dataframe(
                 step5_display,
                 use_container_width=True,
