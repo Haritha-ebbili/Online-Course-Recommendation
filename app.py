@@ -48,29 +48,23 @@ num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 # ================= STEP 3 =================
 if st.button("Generate Recommendations"):
 
-    # Courses already taken by user
-    user_taken_courses = df[df["user_id"] == user_id]["course_id"].unique()
+    # Courses already taken by the user
+    user_taken_courses = df[df["user_id"] == user_id]["course_name"].unique()
 
-    # Course-level aggregation (ENSURES UNIQUENESS)
-    course_master = (
-        df.groupby("course_id", as_index=False)
-        .agg({
-            "course_name": "first",
-            "instructor": "first",
-            "rating": "mean"
-        })
-    )
+    # Remove already taken courses
+    candidate_df = df[
+        ~df["course_name"].isin(user_taken_courses)
+    ].copy()
 
-    # Remove courses already taken
-    course_master = course_master[
-        ~course_master["course_id"].isin(user_taken_courses)
-    ]
+    # Pick BEST instructor per course (ensures unique course_name)
+    idx = candidate_df.groupby("course_name")["rating"].idxmax()
+    unique_courses = candidate_df.loc[idx]
 
     # Recommendation score
-    course_master["recommendation_score"] = course_master["rating"]
+    unique_courses["recommendation_score"] = unique_courses["rating"]
 
-    # Top-N UNIQUE courses
-    recommendations = course_master.sort_values(
+    # Top-N UNIQUE course names
+    recommendations = unique_courses.sort_values(
         by="recommendation_score",
         ascending=False
     ).head(num_recommendations)
@@ -105,3 +99,25 @@ if "recommendations" in st.session_state:
             (df["course_name"].isin(selected_courses)) &
             (df["rating"] >= 4)
         ].copy()
+
+        if not step5_df.empty:
+            # Best instructor per selected course
+            idx = step5_df.groupby("course_name")["rating"].idxmax()
+            top_instructors = step5_df.loc[idx]
+
+            top_instructors["recommendation_score"] = top_instructors["rating"]
+
+            step5_display = top_instructors[
+                ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
+            ].round(2)
+
+            st.header("Step 5: Best Instructor per Selected Course")
+            st.dataframe(
+                step5_display,
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.warning(
+                "No instructors found with rating 4 or above for the selected courses."
+            )
