@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 
-# ================= PAGE CONFIG =================
+#  PAGE CONFIG 
 st.set_page_config(page_title="Course Recommender", layout="wide")
 
-# ================= CUSTOM CSS =================
+# CUSTOM CSS 
 st.markdown("""
 <style>
 .stApp { background-color: #D5CABD !important; }
@@ -27,25 +27,25 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ================= LOAD DATA =================
+#  LOAD DATA 
 @st.cache_data
 def load_data():
     return pd.read_pickle("full_data.pkl")
 
 df = load_data()
 
-# ================= TITLE =================
+#  TITLE
 st.markdown('<h1 class="main-header">Course Recommendation System</h1>', unsafe_allow_html=True)
 
-# ================= STEP 1 =================
+#  STEP 1 
 st.header("Step 1: Enter User ID")
 user_id = st.number_input("User ID", min_value=1, max_value=49999, value=15796)
 
-# ================= STEP 2 =================
+#  STEP 2 
 st.header("Step 2: Number of Recommendations")
 num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
-# ================= STEP 3 =================
+#  STEP 3 
 if st.button("Generate Recommendations"):
 
     # Courses already taken by user
@@ -73,7 +73,7 @@ if st.button("Generate Recommendations"):
     st.session_state.recommendations = rec_display
     st.session_state.course_options = rec_display["course_name"].tolist()
 
-# ================= STEP 3 DISPLAY =================
+#  STEP 3 DISPLAY 
 if "recommendations" in st.session_state:
     st.header("Step 3: Unique Recommended Courses")
     st.dataframe(
@@ -82,7 +82,7 @@ if "recommendations" in st.session_state:
         hide_index=True
     )
 
-# ================= STEP 4 =================
+#  STEP 4
 if "recommendations" in st.session_state:
     st.header("Step 4: Select Courses")
     selected_courses = st.multiselect(
@@ -90,7 +90,7 @@ if "recommendations" in st.session_state:
         st.session_state.course_options
     )
 
-    # ================= STEP 5 (FIXED) =================
+    #  STEP 5 
     if selected_courses:
         step5_df = df[
             (df["course_name"].isin(selected_courses)) &
