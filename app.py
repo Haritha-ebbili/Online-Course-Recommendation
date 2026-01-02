@@ -48,22 +48,19 @@ num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 # ================= STEP 3 =================
 if st.button("Generate Recommendations"):
 
-    # Courses already taken by the user
+    # Courses already taken by user
     user_taken_courses = df[df["user_id"] == user_id]["course_name"].unique()
 
-    # Remove already taken courses
     candidate_df = df[
         ~df["course_name"].isin(user_taken_courses)
     ].copy()
 
-    # Pick BEST instructor per course (ensures unique course_name)
+    # Best instructor per course (unique course names)
     idx = candidate_df.groupby("course_name")["rating"].idxmax()
     unique_courses = candidate_df.loc[idx]
 
-    # Recommendation score
     unique_courses["recommendation_score"] = unique_courses["rating"]
 
-    # Top-N UNIQUE course names
     recommendations = unique_courses.sort_values(
         by="recommendation_score",
         ascending=False
@@ -93,7 +90,7 @@ if "recommendations" in st.session_state:
         st.session_state.course_options
     )
 
-    # ================= STEP 5 =================
+    # ================= STEP 5 (FIXED) =================
     if selected_courses:
         step5_df = df[
             (df["course_name"].isin(selected_courses)) &
@@ -101,17 +98,35 @@ if "recommendations" in st.session_state:
         ].copy()
 
         if not step5_df.empty:
-            # Best instructor per selected course
-            idx = step5_df.groupby("course_name")["rating"].idxmax()
-            top_instructors = step5_df.loc[idx]
 
-            top_instructors["recommendation_score"] = top_instructors["rating"]
+            # Sort by rating descending
+            step5_df = step5_df.sort_values(
+                by="rating",
+                ascending=False
+            )
 
-            step5_display = top_instructors[
+            used_instructors = set()
+            final_rows = []
+
+            for course in selected_courses:
+                course_df = step5_df[
+                    step5_df["course_name"] == course
+                ]
+
+                for _, row in course_df.iterrows():
+                    if row["instructor"] not in used_instructors:
+                        used_instructors.add(row["instructor"])
+                        final_rows.append(row)
+                        break
+
+            final_df = pd.DataFrame(final_rows)
+            final_df["recommendation_score"] = final_df["rating"]
+
+            step5_display = final_df[
                 ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
             ].round(2)
 
-            st.header("Step 5: Best Instructor per Selected Course")
+            st.header("Step 5: Best Unique Instructor per Selected Course")
             st.dataframe(
                 step5_display,
                 use_container_width=True,
