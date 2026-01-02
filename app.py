@@ -21,7 +21,6 @@ st.markdown("""
 .stButton > button {
     background: linear-gradient(45deg, #6a1b9a, #4527a0) !important;
     color: white !important;
-    border: none !important;
     border-radius: 12px !important;
     padding: 12px 30px !important;
     font-weight: 700 !important;
@@ -50,12 +49,30 @@ num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 
 # ================= STEP 3 =================
 if st.button("Generate Recommendations"):
-    unique_courses = df.drop_duplicates(subset="course_name").copy()
 
-    # Use rating as recommendation score
-    unique_courses["recommendation_score"] = unique_courses["rating"]
+    # Courses already taken by the user
+    user_history = df[df["user_id"] == user_id]["course_id"].unique()
 
-    recommendations = unique_courses.nlargest(
+    # Global course rating
+    course_master = (
+        df.groupby("course_id", as_index=False)
+        .agg({
+            "course_name": "first",
+            "instructor": "first",
+            "rating": "mean"
+        })
+    )
+
+    # Remove courses user already took
+    candidate_courses = course_master[
+        ~course_master["course_id"].isin(user_history)
+    ].copy()
+
+    # Recommendation score (rating-based)
+    candidate_courses["recommendation_score"] = candidate_courses["rating"]
+
+    # Top-N recommendations
+    recommendations = candidate_courses.nlargest(
         num_recommendations, "recommendation_score"
     )
 
@@ -91,22 +108,17 @@ if "recommendations" in st.session_state:
         ].copy()
 
         if not step5_df.empty:
-            # Get best instructor per course
+            # Best instructor per selected course
             idx = step5_df.groupby("course_name")["rating"].idxmax()
             top_instructors = step5_df.loc[idx]
 
             top_instructors["recommendation_score"] = top_instructors["rating"]
 
-            top_instructors = top_instructors.sort_values(
-                by="recommendation_score",
-                ascending=False
-            )
-
             step5_display = top_instructors[
                 ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
             ].round(2)
 
-            st.header("Step 5: Best Instructor per Selected Course with High Rating")
+            st.header("Step 5: Best Instructor per Selected Course")
             st.dataframe(
                 step5_display,
                 use_container_width=True,
