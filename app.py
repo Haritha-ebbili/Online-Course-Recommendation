@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Course Recommender", layout="wide")
@@ -16,7 +15,6 @@ st.markdown("""
     -webkit-text-fill-color: transparent !important;
     font-weight: 800 !important;
     text-align: center !important;
-    margin-bottom: 2rem !important;
 }
 .stButton > button {
     background: linear-gradient(45deg, #6a1b9a, #4527a0) !important;
@@ -50,10 +48,10 @@ num_recommendations = st.slider("How many unique courses?", 1, 20, 10)
 # ================= STEP 3 =================
 if st.button("Generate Recommendations"):
 
-    # Courses already taken by the user
-    user_history = df[df["user_id"] == user_id]["course_id"].unique()
+    # Courses already taken by user
+    user_taken_courses = df[df["user_id"] == user_id]["course_id"].unique()
 
-    # Global course rating
+    # Course-level aggregation (ENSURES UNIQUENESS)
     course_master = (
         df.groupby("course_id", as_index=False)
         .agg({
@@ -63,18 +61,19 @@ if st.button("Generate Recommendations"):
         })
     )
 
-    # Remove courses user already took
-    candidate_courses = course_master[
-        ~course_master["course_id"].isin(user_history)
-    ].copy()
+    # Remove courses already taken
+    course_master = course_master[
+        ~course_master["course_id"].isin(user_taken_courses)
+    ]
 
-    # Recommendation score (rating-based)
-    candidate_courses["recommendation_score"] = candidate_courses["rating"]
+    # Recommendation score
+    course_master["recommendation_score"] = course_master["rating"]
 
-    # Top-N recommendations
-    recommendations = candidate_courses.nlargest(
-        num_recommendations, "recommendation_score"
-    )
+    # Top-N UNIQUE courses
+    recommendations = course_master.sort_values(
+        by="recommendation_score",
+        ascending=False
+    ).head(num_recommendations)
 
     rec_display = recommendations[
         ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
@@ -85,7 +84,7 @@ if st.button("Generate Recommendations"):
 
 # ================= STEP 3 DISPLAY =================
 if "recommendations" in st.session_state:
-    st.header("Step 3: Recommended Courses")
+    st.header("Step 3: Unique Recommended Courses")
     st.dataframe(
         st.session_state.recommendations,
         use_container_width=True,
@@ -106,25 +105,3 @@ if "recommendations" in st.session_state:
             (df["course_name"].isin(selected_courses)) &
             (df["rating"] >= 4)
         ].copy()
-
-        if not step5_df.empty:
-            # Best instructor per selected course
-            idx = step5_df.groupby("course_name")["rating"].idxmax()
-            top_instructors = step5_df.loc[idx]
-
-            top_instructors["recommendation_score"] = top_instructors["rating"]
-
-            step5_display = top_instructors[
-                ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
-            ].round(2)
-
-            st.header("Step 5: Best Instructor per Selected Course")
-            st.dataframe(
-                step5_display,
-                use_container_width=True,
-                hide_index=True
-            )
-        else:
-            st.warning(
-                "No instructors found with rating 4 or above for the selected courses."
-            )
