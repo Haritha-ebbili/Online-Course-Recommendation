@@ -1,3 +1,5 @@
+
+You said:
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -101,37 +103,34 @@ if "recommendations" in st.session_state:
         st.session_state.course_options
     )
 
-    # STEP 5: High ranked course from selection   
-if selected_courses:
-    step5_result = df[
-        (df["course_name"].isin(selected_courses)) &
-        (df["rating"] >= 4)
-    ].copy()
+    # STEP 5: High ranked course from selection
+    if selected_courses:
+        # Filter data for selected courses and high ratings
+        step5_result = df[
+            (df["course_name"].isin(selected_courses)) &
+            (df["rating"] >= 4)
+        ].copy()
 
-    if not step5_result.empty:
-        # Pick highest rated instructor per course
-        idx = step5_result.groupby("course_name")["rating"].idxmax()
-        top_courses = step5_result.loc[idx]
+        # Rename/Add recommendation_score (using rating as the rank metric here)
+        step5_result["recommendation_score"] = step5_result["rating"]
 
-        # Add recommendation score
-        top_courses["recommendation_score"] = top_courses["rating"]
+        # Sort by rating descending to get the "High Ranked" ones
+        step5_result = step5_result.sort_values(by="rating", ascending=False)
 
-        # Sort for clean display
-        top_courses = top_courses.sort_values(
-            by="recommendation_score",
-            ascending=False
-        )
-
-        # Select required columns
-        step5_display = top_courses[
+        # Select requested columns
+        step5_display = step5_result[
             ["course_id", "recommendation_score", "course_name", "instructor", "rating"]
-        ].round(2)
+        ]
 
-        st.header("Step 5: Highest Ranked Instructor for Each Selected Course")
-        st.dataframe(
-            step5_display,
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.warning("No instructors found with a rating of 4 or higher for these selections.")
+        # GET ONLY THE HIGHEST RANKED COURSE (Top 1)
+        top_course = step5_display.head(1)
+
+        st.header("Step 5: Highest Ranked Course from Selection")
+        if not top_course.empty:
+            st.dataframe(
+                top_course,
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.warning("No instructors found with a rating of 4 or higher for these selections.")
